@@ -17,19 +17,19 @@ Añadir una capa MCP para acelerar desarrollo de plugins usando información del
 - [x] Fase 0.1 Crear snapshots base (`InspectorRootSnapshot`, `InspectorObjectSnapshot`, `InspectorSlotSnapshot`).
 - [x] Fase 0.1 Implementar servicio inicial (`InspectorContractImpl`) sobre `ObjectInspector`.
 - [x] Fase 0.1 Exponer el servicio en `DarkBotPluginApiImpl`.
-- [ ] Fase 0.2 Definir esquemas formales de tools MCP (input/output).
-- [ ] Fase 0.2 Añadir serialización JSON estable para snapshots y schemas.
+- [x] Fase 0.2 Definir esquemas formales de tools MCP (input/output).
+- [x] Fase 0.2 Añadir serialización JSON estable para snapshots y schemas.
 - [ ] Fase 1 Implementar bridge MCP consumiendo esta capa interna.
 - [ ] Fase 2 Añadir controles de seguridad, rate limit y métricas.
 - [ ] Fase 3 Migrar a API pública de core y cerrar dependencias internas.
 
 ## Estado actual
 
-Actualmente estamos en **Fase 0.2**.
+Actualmente estamos en **inicio de Fase 1**.
 
 ## Qué sigue inmediatamente
 
-1. Añadir catálogo de tools MCP con schema explícito.
-2. Añadir serializador JSON estable para salida de tools.
-3. Exponer estas capacidades en el contenedor de Plugin API.
-4. Ejecutar build y verificar diagnóstico limpio.
+1. Implementar bridge MCP read-only que consuma `InspectorContract`.
+2. Exponer tools MCP con validación de entrada y mensajes de error claros.
+3. Añadir límites de profundidad/tamaño en respuestas para evitar payloads grandes.
+4. Validar integración end-to-end con pruebas manuales de herramientas.
