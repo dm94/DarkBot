@@ -5,12 +5,17 @@ public class InspectorToolExecutionResult {
   private final boolean success;
   private final String payload;
   private final String error;
+  private final boolean truncated;
+  private final int payloadLength;
 
-  public InspectorToolExecutionResult(String toolId, boolean success, String payload, String error) {
+  public InspectorToolExecutionResult(String toolId, boolean success, String payload, String error, boolean truncated,
+      int payloadLength) {
     this.toolId = toolId;
     this.success = success;
     this.payload = payload;
     this.error = error;
+    this.truncated = truncated;
+    this.payloadLength = payloadLength;
   }
 
   public String getToolId() {
@@ -27,5 +32,13 @@ public class InspectorToolExecutionResult {
 
   public String getError() {
     return error;
+  }
+
+  public boolean isTruncated() {
+    return truncated;
+  }
+
+  public int getPayloadLength() {
+    return payloadLength;
   }
 }
