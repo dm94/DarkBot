@@ -16,19 +16,33 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class InspectorMcpSocketTransport implements API.Singleton {
   private static final int DEFAULT_PORT = 7788;
   private static final int MAX_PORT_ATTEMPTS = 30;
+  private static final ThreadFactory ACCEPT_THREAD_FACTORY = createThreadFactory("mcp-accept");
+  private static final ThreadFactory CLIENT_THREAD_FACTORY = createThreadFactory("mcp-client");
   private final InspectorMcpBridgeService bridgeService;
   private final ExecutorService acceptExecutor;
   private final ExecutorService clientExecutor;
   private Optional<ServerSocket> serverSocket;
 
   public InspectorMcpSocketTransport() {
-    this.bridgeService = Main.INSTANCE.pluginAPI.requireInstance(InspectorMcpBridgeService.class);
-    this.acceptExecutor = Executors.newSingleThreadExecutor();
-    this.clientExecutor = Executors.newFixedThreadPool(4);
+    this(
+        Main.INSTANCE.pluginAPI.requireInstance(InspectorMcpBridgeService.class),
+        Executors.newSingleThreadExecutor(ACCEPT_THREAD_FACTORY),
+        Executors.newFixedThreadPool(4, CLIENT_THREAD_FACTORY));
+  }
+
+  InspectorMcpSocketTransport(
+      InspectorMcpBridgeService bridgeService,
+      ExecutorService acceptExecutor,
+      ExecutorService clientExecutor) {
+    this.bridgeService = bridgeService;
+    this.acceptExecutor = acceptExecutor;
+    this.clientExecutor = clientExecutor;
     this.serverSocket = Optional.empty();
   }
 
@@ -66,6 +80,9 @@ public class InspectorMcpSocketTransport implements API.Singleton {
   }
 
   private ServerSocket bindSocket(int preferredPort) {
+    if (preferredPort <= 0) {
+      return bindEphemeralSocket();
+    }
     int safePort = Math.max(1, preferredPort);
     for (int offset = 0; offset < MAX_PORT_ATTEMPTS; offset++) {
       int candidatePort = safePort + offset;
@@ -79,6 +96,16 @@ public class InspectorMcpSocketTransport implements API.Singleton {
       }
     }
     throw new IllegalStateException("No available localhost port for MCP socket transport");
+  }
+
+  private ServerSocket bindEphemeralSocket() {
+    try {
+      ServerSocket socket = new ServerSocket(0, 32, InetAddress.getLoopbackAddress());
+      socket.setReuseAddress(true);
+      return socket;
+    } catch (IOException e) {
+      throw new IllegalStateException("Unable to bind ephemeral MCP socket transport port", e);
+    }
   }
 
   private void acceptLoop(ServerSocket socket) {
@@ -113,5 +140,14 @@ public class InspectorMcpSocketTransport implements API.Singleton {
       }
     } catch (IOException ignored) {
     }
+  }
+
+  private static ThreadFactory createThreadFactory(String prefix) {
+    AtomicInteger counter = new AtomicInteger(0);
+    return runnable -> {
+      Thread thread = new Thread(runnable, prefix + "-" + counter.incrementAndGet());
+      thread.setDaemon(true);
+      return thread;
+    };
   }
 }

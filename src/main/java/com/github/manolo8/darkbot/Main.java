@@ -27,6 +27,7 @@ import com.github.manolo8.darkbot.core.utils.Lazy;
 import com.github.manolo8.darkbot.extensions.DarkBotPluginApiImpl;
 import com.github.manolo8.darkbot.extensions.features.FeatureDefinition;
 import com.github.manolo8.darkbot.extensions.features.FeatureRegistry;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpSocketTransport;
 import com.github.manolo8.darkbot.extensions.plugins.PluginHandler;
 import com.github.manolo8.darkbot.extensions.plugins.PluginIssue;
 import com.github.manolo8.darkbot.extensions.plugins.PluginListener;
@@ -63,11 +64,12 @@ import java.util.Objects;
 public class Main extends Thread implements PluginListener, BotAPI {
 
     /** Do not use in plugins! Only for bot internal usage */
-    @ApiStatus.Internal public static Main INSTANCE;
+    @ApiStatus.Internal
+    public static Main INSTANCE;
 
-    public static final Version VERSION      = new Version("1.131.7");
+    public static final Version VERSION = new Version("1.131.7");
     public static final Object UPDATE_LOCKER = new Object();
-    public static final Gson GSON            = new GsonBuilder()
+    public static final Gson GSON = new GsonBuilder()
             .setPrettyPrinting()
             .setLenient()
             .disableHtmlEscaping()
@@ -86,7 +88,7 @@ public class Main extends Thread implements PluginListener, BotAPI {
 
     public DarkBotPluginApiImpl pluginAPI;
 
-    public final Lazy.Sync<Boolean> status      = new Lazy.Sync<>();
+    public final Lazy.Sync<Boolean> status = new Lazy.Sync<>();
     public final Lazy.Sync<String> configChange = new Lazy.Sync<>();
     public final StarManager starManager;
     public final MapManager mapManager;
@@ -139,27 +141,28 @@ public class Main extends Thread implements PluginListener, BotAPI {
         // 4: Generate the actual config
         this.configHandler = pluginAPI.requireInstance(ConfigHandler.class);
 
-        // These need to be delayed until post-initialization so translated strings are available
+        // These need to be delayed until post-initialization so translated strings are
+        // available
         StartupChecks.checkJavaVersion(params);
-        StartupChecks.checkUniqueInstance(params); //method require min java 9
+        StartupChecks.checkUniqueInstance(params); // method require min java 9
 
         VerifierChecker.getAuthApi().setupAuth();
         this.pluginAPI.addInstance(VerifierChecker.getAuthApi());
 
-        this.starManager     = pluginAPI.requireInstance(StarManager.class);
-        this.mapManager      = pluginAPI.requireInstance(MapManager.class);
+        this.starManager = pluginAPI.requireInstance(StarManager.class);
+        this.mapManager = pluginAPI.requireInstance(MapManager.class);
         this.settingsManager = pluginAPI.requireInstance(SettingsManager.class);
-        this.facadeManager   = pluginAPI.requireInstance(FacadeManager.class);
-        this.hero            = pluginAPI.requireInstance(HeroManager.class);
-        this.effectManager   = pluginAPI.requireInstance(EffectManager.class);
-        this.guiManager      = pluginAPI.requireInstance(GuiManager.class);
-        this.statsManager    = pluginAPI.requireInstance(StatsManager.class);
-        this.pingManager     = pluginAPI.requireInstance(PingManager.class);
-        this.pluginHandler   = pluginAPI.requireInstance(PluginHandler.class);
-        this.pluginUpdater   = pluginAPI.requireInstance(PluginUpdater.class);
-        this.backpage        = pluginAPI.requireInstance(BackpageManager.class);
+        this.facadeManager = pluginAPI.requireInstance(FacadeManager.class);
+        this.hero = pluginAPI.requireInstance(HeroManager.class);
+        this.effectManager = pluginAPI.requireInstance(EffectManager.class);
+        this.guiManager = pluginAPI.requireInstance(GuiManager.class);
+        this.statsManager = pluginAPI.requireInstance(StatsManager.class);
+        this.pingManager = pluginAPI.requireInstance(PingManager.class);
+        this.pluginHandler = pluginAPI.requireInstance(PluginHandler.class);
+        this.pluginUpdater = pluginAPI.requireInstance(PluginUpdater.class);
+        this.backpage = pluginAPI.requireInstance(BackpageManager.class);
         this.featureRegistry = pluginAPI.requireInstance(FeatureRegistry.class);
-        this.repairManager   = pluginAPI.requireInstance(RepairManager.class);
+        this.repairManager = pluginAPI.requireInstance(RepairManager.class);
         this.botInstaller = pluginAPI.requireInstance(BotInstaller.class);
         this.eventBroker = pluginAPI.requireAPI(EventBrokerAPI.class);
 
@@ -173,7 +176,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
                 hero, statsManager, pingManager, repairManager, performanceManager);
 
         this.botInstaller.invalid.add(value -> {
-            if (!value) lastRefresh = System.currentTimeMillis();
+            if (!value)
+                lastRefresh = System.currentTimeMillis();
         });
 
         this.status.add(this::onRunningToggle);
@@ -184,14 +188,27 @@ public class Main extends Thread implements PluginListener, BotAPI {
 
         this.form = new MainGui(this);
         this.pluginUpdater.scheduleUpdateChecker();
+        initializeMcpTransport();
 
         if (configManager.getConfigFailed())
             Popups.of("Error", I18n.get("bot.issue.config_load_failed"), JOptionPane.ERROR_MESSAGE).showAsync();
 
         API.createWindow();
-        if (params.getAutoStart()) setRunning(true);
+        if (params.getAutoStart())
+            setRunning(true);
         this.start();
         backpage.start();
+    }
+
+    private void initializeMcpTransport() {
+        try {
+            InspectorMcpSocketTransport transport = pluginAPI.requireInstance(InspectorMcpSocketTransport.class);
+            int port = transport.start();
+            System.out.println("MCP transport started on localhost:" + port);
+            Runtime.getRuntime().addShutdownHook(new Thread(transport::stop, "mcp-transport-shutdown"));
+        } catch (IllegalStateException e) {
+            System.out.println("MCP transport disabled: " + e.getMessage());
+        }
     }
 
     @Override
@@ -210,8 +227,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
             double elapsed = (System.nanoTime() - time) * 0.000001;
             avgTick = ((avgTick * 9) + elapsed) * 0.1;
 
-            int pause = botInstaller.invalid.get() ? 250 :
-                    Math.max(performanceManager.getMinTickTime(), Math.min((int) (avgTick * 1.25), 100));
+            int pause = botInstaller.invalid.get() ? 250
+                    : Math.max(performanceManager.getMinTickTime(), Math.min((int) (avgTick * 1.25), 100));
             Time.sleep((long) (pause - elapsed));
 
             try {
@@ -227,10 +244,13 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.status.tick();
         checkModule();
 
-        // Do not care for either valid nor invalid if we're running a background-only bot
+        // Do not care for either valid nor invalid if we're running a background-only
+        // bot
         if (!Main.API.hasCapability(Capability.BACKGROUND_ONLY)) {
-            if (isInvalid()) tickingModule = false;
-            else validTick();
+            if (isInvalid())
+                tickingModule = false;
+            else
+                validTick();
         }
 
         this.form.tick();
@@ -243,7 +263,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
     private void processTasks() {
         Runnable[] tasks;
         synchronized (Main.UPDATE_LOCKER) {
-            if (this.tasks.isEmpty()) return;
+            if (this.tasks.isEmpty())
+                return;
 
             tasks = this.tasks.toArray(new Runnable[0]);
             this.tasks.clear();
@@ -274,8 +295,10 @@ public class Main extends Thread implements PluginListener, BotAPI {
         API.tick();
 
         tickingModule = running && guiManager.canTickModule();
-        if (tickingModule) tickRunning();
-        else tickLogic(false);
+        if (tickingModule)
+            tickRunning();
+        else
+            tickLogic(false);
 
         if (!running)
             hero.setLocalTarget(hero.getTargetAs(Lockable.class));
@@ -293,8 +316,10 @@ public class Main extends Thread implements PluginListener, BotAPI {
     private void tickLogic(boolean running) {
         synchronized (pluginHandler) {
             try {
-                if (running) newModule.onTickModule();
-                else newModule.onTickStopped();
+                if (running)
+                    newModule.onTickModule();
+                else
+                    newModule.onTickStopped();
             } catch (InvalidNativeSignature e) {
                 e.printStackTrace();
                 setRunning(false);
@@ -309,8 +334,10 @@ public class Main extends Thread implements PluginListener, BotAPI {
             }
             for (Behavior behaviour : behaviours) {
                 try {
-                    if (running) behaviour.onTickBehavior();
-                    else behaviour.onStoppedBehavior();
+                    if (running)
+                        behaviour.onTickBehavior();
+                    else
+                        behaviour.onStoppedBehavior();
                 } catch (InvalidNativeSignature e) {
                     e.printStackTrace();
                     setRunning(false);
@@ -325,14 +352,17 @@ public class Main extends Thread implements PluginListener, BotAPI {
 
     private void checkRefresh() {
         if (config.MISCELLANEOUS.REFRESH_TIME == 0 ||
-                System.currentTimeMillis() - lastRefresh < config.MISCELLANEOUS.REFRESH_TIME * 60 * 1000L) return;
+                System.currentTimeMillis() - lastRefresh < config.MISCELLANEOUS.REFRESH_TIME * 60 * 1000L)
+            return;
 
-        if (!newModule.canRefresh()) return;
+        if (!newModule.canRefresh())
+            return;
 
         lastRefresh = System.currentTimeMillis();
         if (config.MISCELLANEOUS.PAUSE_FOR > 0) {
             System.out.println("Pausing (logging off): time arrived & module allows refresh");
-            setModule(new DisconnectModule(config.MISCELLANEOUS.PAUSE_FOR * 60 * 1000L, I18n.get("module.disconnect.reason.break")));
+            setModule(new DisconnectModule(config.MISCELLANEOUS.PAUSE_FOR * 60 * 1000L,
+                    I18n.get("module.disconnect.reason.break")));
         } else {
             System.out.println("Triggering refresh: time arrived & module allows refresh");
             handleRefresh();
@@ -357,12 +387,15 @@ public class Main extends Thread implements PluginListener, BotAPI {
         if (module != null) {
             if (module instanceof Installable)
                 ((Installable) module).install(pluginAPI);
-            if (setConfig) updateCustomConfig(module);
+            if (setConfig)
+                updateCustomConfig(module);
         }
         this.newModule = module;
-        // For legacy purposes, keep the old module field with the old module datatype. Use a dummy for new modules.
-        this.module = module instanceof com.github.manolo8.darkbot.core.itf.Module ?
-                (com.github.manolo8.darkbot.core.itf.Module) module : new DummyModule();
+        // For legacy purposes, keep the old module field with the old module datatype.
+        // Use a dummy for new modules.
+        this.module = module instanceof com.github.manolo8.darkbot.core.itf.Module
+                ? (com.github.manolo8.darkbot.core.itf.Module) module
+                : new DummyModule();
         return module;
     }
 
@@ -379,7 +412,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
 
     @Override
     public void beforeLoad() {
-        if (newModule != null) setModule(new DummyModule(), true);
+        if (newModule != null)
+            setModule(new DummyModule(), true);
     }
 
     @Override
@@ -392,7 +426,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
     }
 
     public void setRunning(boolean running) {
-        if (this.running == running) return;
+        if (this.running == running)
+            return;
         status.send(running);
         this.running = running;
         API.setUserInput(!running);
@@ -415,11 +450,12 @@ public class Main extends Thread implements PluginListener, BotAPI {
     private void checkModule() {
         if (newModule == null || !Objects.equals(moduleId, config.GENERAL.CURRENT_MODULE)) {
             Module module = featureRegistry.getFeature(moduleId = config.GENERAL.CURRENT_MODULE, Module.class)
-                .orElseGet(() -> {
-                    String name = moduleId.substring(moduleId.lastIndexOf(".") + 1);
-                    Popups.of("Error", I18n.get("bot.issue.module_load_failed", name), JOptionPane.ERROR_MESSAGE).showAsync();
-                    return new DummyModule();
-                });
+                    .orElseGet(() -> {
+                        String name = moduleId.substring(moduleId.lastIndexOf(".") + 1);
+                        Popups.of("Error", I18n.get("bot.issue.module_load_failed", name), JOptionPane.ERROR_MESSAGE)
+                                .showAsync();
+                        return new DummyModule();
+                    });
             setModule(module, true);
         }
     }
@@ -433,7 +469,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
     }
 
     private void setConfigInternal(String config) {
-        if (configManager.getConfigName().equals(config)) return;
+        if (configManager.getConfigName().equals(config))
+            return;
         try {
             configManager.saveConfig();
             SwingUtilities.invokeAndWait(() -> {
