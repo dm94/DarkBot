@@ -9,6 +9,8 @@ public interface InspectorContract extends API.Singleton {
 
   List<String> getSupportedTools();
 
+  List<InspectorToolSchemaSnapshot> getToolSchemas();
+
   List<InspectorRootSnapshot> listRoots();
 
   Optional<InspectorObjectSnapshot> inspectObject(long address, int slotLimit);

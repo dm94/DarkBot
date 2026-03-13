@@ -17,16 +17,20 @@ import static com.github.manolo8.darkbot.Main.API;
 public class InspectorContractImpl implements InspectorContract {
     private static final int DEFAULT_SLOT_LIMIT = 250;
     private static final int DEFAULT_SEARCH_LIMIT = 100;
-    private static final List<String> SUPPORTED_TOOLS = List.of(
-            "list_roots",
-            "inspect_object",
-            "read_slot",
-            "search_slot",
-            "snapshot_root");
+    private final InspectorToolSchemaRegistry toolSchemaRegistry;
+
+    public InspectorContractImpl() {
+        this.toolSchemaRegistry = Main.INSTANCE.pluginAPI.requireInstance(InspectorToolSchemaRegistry.class);
+    }
 
     @Override
     public List<String> getSupportedTools() {
-        return SUPPORTED_TOOLS;
+        return toolSchemaRegistry.getToolIds();
+    }
+
+    @Override
+    public List<InspectorToolSchemaSnapshot> getToolSchemas() {
+        return toolSchemaRegistry.getToolSchemas();
     }
 
     @Override

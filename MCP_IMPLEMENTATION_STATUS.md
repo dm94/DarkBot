@@ -19,7 +19,7 @@ Añadir una capa MCP para acelerar desarrollo de plugins usando información del
 - [x] Fase 0.1 Exponer el servicio en `DarkBotPluginApiImpl`.
 - [x] Fase 0.2 Definir esquemas formales de tools MCP (input/output).
 - [x] Fase 0.2 Añadir serialización JSON estable para snapshots y schemas.
-- [ ] Fase 1 Implementar bridge MCP consumiendo esta capa interna.
+- [~] Fase 1 Implementar bridge MCP consumiendo esta capa interna (executor interno iniciado).
 - [ ] Fase 2 Añadir controles de seguridad, rate limit y métricas.
 - [ ] Fase 3 Migrar a API pública de core y cerrar dependencias internas.
 

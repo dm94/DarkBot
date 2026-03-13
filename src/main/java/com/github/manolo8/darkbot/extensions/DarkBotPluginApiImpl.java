@@ -16,6 +16,9 @@ import com.github.manolo8.darkbot.core.utils.Drive;
 import com.github.manolo8.darkbot.core.utils.EntityList;
 import com.github.manolo8.darkbot.extensions.features.FeatureRegistry;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorContractImpl;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorJsonSerializer;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpToolExecutor;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorToolSchemaRegistry;
 import com.github.manolo8.darkbot.modules.utils.AttackAPIImpl;
 import com.github.manolo8.darkbot.utils.LegacyModules;
 import eu.darkbot.impl.PluginApiImpl;
@@ -44,7 +47,10 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
                 LegacyModules.class,
                 I18n.class,
                 ConfigHandler.class,
+                InspectorToolSchemaRegistry.class,
                 InspectorContractImpl.class,
+                InspectorJsonSerializer.class,
+                InspectorMcpToolExecutor.class,
                 NativeBrowserImpl.class);
         addDecorator(requireInstance(ListenerDecorator.class));
     }
