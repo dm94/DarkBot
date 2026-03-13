@@ -18,6 +18,7 @@ import com.github.manolo8.darkbot.extensions.features.FeatureRegistry;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorContractImpl;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorJsonSerializer;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpBridgeService;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpSocketTransport;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpToolExecutor;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorToolSchemaRegistry;
 import com.github.manolo8.darkbot.modules.utils.AttackAPIImpl;
@@ -53,6 +54,7 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
                 InspectorJsonSerializer.class,
                 InspectorMcpToolExecutor.class,
                 InspectorMcpBridgeService.class,
+                InspectorMcpSocketTransport.class,
                 NativeBrowserImpl.class);
         addDecorator(requireInstance(ListenerDecorator.class));
     }
