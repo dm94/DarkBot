@@ -15,6 +15,7 @@ import com.github.manolo8.darkbot.core.objects.facades.SlotBarsProxy;
 import com.github.manolo8.darkbot.core.utils.Drive;
 import com.github.manolo8.darkbot.core.utils.EntityList;
 import com.github.manolo8.darkbot.extensions.features.FeatureRegistry;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorContractImpl;
 import com.github.manolo8.darkbot.modules.utils.AttackAPIImpl;
 import com.github.manolo8.darkbot.utils.LegacyModules;
 import eu.darkbot.impl.PluginApiImpl;
@@ -43,6 +44,7 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
                 LegacyModules.class,
                 I18n.class,
                 ConfigHandler.class,
+                InspectorContractImpl.class,
                 NativeBrowserImpl.class);
         addDecorator(requireInstance(ListenerDecorator.class));
     }
