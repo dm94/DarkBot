@@ -33,4 +33,8 @@ public class InspectorJsonSerializer implements API.Singleton {
     public String toJsonExecutionResult(InspectorToolExecutionResult result) {
         return gson.toJson(result);
     }
+
+    public String toJsonMetrics(InspectorMcpMetricsSnapshot metricsSnapshot) {
+        return gson.toJson(metricsSnapshot);
+    }
 }

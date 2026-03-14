@@ -128,18 +128,26 @@ public class InspectorMcpSocketTransport implements API.Singleton {
             new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
         BufferedWriter writer = new BufferedWriter(
             new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+      String clientId = resolveClientId(socket);
       String requestLine;
       while ((requestLine = reader.readLine()) != null) {
         if (requestLine.trim().isEmpty()) {
           continue;
         }
-        String response = bridgeService.handleRequest(requestLine);
+        String response = bridgeService.handleRequest(requestLine, clientId);
         writer.write(response);
         writer.newLine();
         writer.flush();
       }
     } catch (IOException ignored) {
     }
+  }
+
+  private String resolveClientId(Socket socket) {
+    return Optional.ofNullable(socket.getInetAddress())
+        .map(InetAddress::getHostAddress)
+        .filter(value -> !value.trim().isEmpty())
+        .orElse("unknown");
   }
 
   private static ThreadFactory createThreadFactory(String prefix) {

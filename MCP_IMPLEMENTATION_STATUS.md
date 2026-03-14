@@ -20,16 +20,16 @@ Añadir una capa MCP para acelerar desarrollo de plugins usando información del
 - [x] Fase 0.2 Definir esquemas formales de tools MCP (input/output).
 - [x] Fase 0.2 Añadir serialización JSON estable para snapshots y schemas.
 - [x] Fase 1 Implementar bridge MCP consumiendo esta capa interna (bridge service JSON-RPC + executor read-only + socket localhost transport + arranque en runtime).
-- [ ] Fase 2 Añadir controles de seguridad, rate limit y métricas.
+- [x] Fase 2 Añadir controles de seguridad, rate limit y métricas.
 - [ ] Fase 3 Migrar a API pública de core y cerrar dependencias internas.
 
 ## Estado actual
 
-Actualmente estamos en **inicio de Fase 2**.
+Actualmente estamos en **inicio de Fase 3**.
 
 ## Qué sigue inmediatamente
 
-1. Añadir políticas de permisos por tool para uso en producción.
-2. Añadir rate limit por cliente para el transporte socket.
-3. Añadir métricas básicas de uso/errores por tool.
-4. Añadir límites de profundidad por estructura anidada en snapshots.
+1. Definir contrato público de registro de tools para plugins externos.
+2. Exponer API versionada estable para transporte y autorización MCP.
+3. Aislar dependencias internas (`InspectorContractImpl`) detrás de interfaces públicas.
+4. Añadir pruebas de compatibilidad de versión para tools registradas por plugins.
