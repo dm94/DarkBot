@@ -19,6 +19,7 @@ import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorContractImpl
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorJsonSerializer;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpBridgeService;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpMetrics;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpPluginRegistrationApi;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpPermissionService;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpRateLimiter;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpSocketTransport;
@@ -55,6 +56,7 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
                 ConfigHandler.class,
                 InspectorToolSchemaRegistry.class,
                 InspectorMcpToolRegistry.class,
+                InspectorMcpPluginRegistrationApi.class,
                 InspectorMcpPermissionService.class,
                 InspectorMcpRateLimiter.class,
                 InspectorMcpMetrics.class,
