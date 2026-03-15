@@ -74,6 +74,15 @@ dependencies {
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
 tasks.withType<JavaExec> { systemProperty("file.encoding", "UTF-8") }
 
+tasks.register<JavaExec>("runMcp") {
+    group = "application"
+    description = "Runs DarkBot with MCP stdio enabled"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set(application.mainClass)
+    systemProperty("darkbot.mcp.stdio.enabled", "true")
+    environment("DARKBOT_MCP_STDIO_ENABLED", "true")
+}
+
 tasks.wrapper {
     gradleVersion = "8.6"
 
