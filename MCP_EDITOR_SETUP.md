@@ -85,13 +85,22 @@ For this workflow, attach through the MCP socket transport (always started by Da
    - `MCP transport started on localhost:<port>`
 3. Configure your editor MCP client to connect to `127.0.0.1:<port>`.
 
-If your editor only supports stdio command-based servers, use a stdio-to-socket bridge command (example with ncat):
+Direct socket connection (recommended): if your editor supports MCP over TCP/socket, connect to `127.0.0.1:<port>`.
+Most editors let you connect to external MCP servers directly.
+
+If your editor only supports stdio command-based servers, use a stdio-to-socket bridge command (example with ncat).
+On Windows, `ncat` is not installed by default.
+
+- Install it with Nmap (for example `winget install Insecure.Nmap`), or
+- Use the full executable path if already installed (`C:\\Program Files (x86)\\Nmap\\ncat.exe`).
+
+Windows example:
 
 ```json
 {
   "mcpServers": {
     "darkbot": {
-      "command": "ncat",
+      "command": "C:\\Program Files (x86)\\Nmap\\ncat.exe",
       "args": ["127.0.0.1", "7788"]
     }
   }
