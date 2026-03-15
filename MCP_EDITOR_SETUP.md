@@ -68,6 +68,38 @@ Most editors use an MCP JSON schema with `mcpServers`.
 
 Use either the JVM property or the env variable. Keeping both is fine.
 
+## 3.1) Attach editor to an already running `runMcp`
+
+If you start DarkBot manually with:
+
+```powershell
+.\gradlew.bat runMcp --console=plain
+```
+
+then MCP stdio is bound to that Gradle process terminal, so the editor cannot attach to that same stdio stream.
+
+For this workflow, attach through the MCP socket transport (always started by DarkBot on localhost).
+
+1. Start `runMcp` in a terminal and keep it running.
+2. Read the log line:
+   - `MCP transport started on localhost:<port>`
+3. Configure your editor MCP client to connect to `127.0.0.1:<port>`.
+
+If your editor only supports stdio command-based servers, use a stdio-to-socket bridge command (example with ncat):
+
+```json
+{
+  "mcpServers": {
+    "darkbot": {
+      "command": "ncat",
+      "args": ["127.0.0.1", "7788"]
+    }
+  }
+}
+```
+
+Replace `7788` with the actual port shown by DarkBot if it changes.
+
 ## 4) Cursor
 
 Open Cursor MCP settings and add the `darkbot` server using the base definition above.
