@@ -135,6 +135,9 @@ public class InspectorMcpSocketTransport implements API.Singleton {
           continue;
         }
         String response = bridgeService.handleRequest(requestLine, clientId);
+        if (response == null || response.trim().isEmpty()) {
+          continue;
+        }
         writer.write(response);
         writer.newLine();
         writer.flush();

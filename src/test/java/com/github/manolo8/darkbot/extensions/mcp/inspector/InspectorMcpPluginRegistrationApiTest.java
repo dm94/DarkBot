@@ -31,7 +31,7 @@ public class InspectorMcpPluginRegistrationApiTest {
         InspectorMcpToolExecutor executor = Mockito.mock(InspectorMcpToolExecutor.class);
         Mockito.when(executor.execute(Mockito.anyString(), Mockito.anyMap()))
                 .thenAnswer(invocation -> registry.execute(invocation.getArgument(0), invocation.getArgument(1)));
-        Mockito.when(executor.listToolSchemasAsJson()).thenReturn(new Gson().toJson(registry.listSchemas()));
+        Mockito.when(executor.listToolSchemas()).thenReturn(registry.listSchemas());
 
         InspectorMcpBridgeService bridge = new InspectorMcpBridgeService(
                 executor,
@@ -42,7 +42,9 @@ public class InspectorMcpPluginRegistrationApiTest {
 
         String listResponse = bridge.handleRequest("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}",
                 "127.0.0.1");
-        JsonArray tools = JsonParser.parseString(listResponse).getAsJsonObject().getAsJsonArray("result");
+        JsonArray tools = JsonParser.parseString(listResponse).getAsJsonObject()
+                .getAsJsonObject("result")
+                .getAsJsonArray("tools");
         Assertions.assertTrue(containsTool(tools, "external_echo"));
 
         String callRequest = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"external_echo\",\"arguments\":{\"message\":\"hola\"}}}";
@@ -58,7 +60,7 @@ public class InspectorMcpPluginRegistrationApiTest {
     private boolean containsTool(JsonArray schemas, String toolId) {
         for (int index = 0; index < schemas.size(); index++) {
             JsonObject schema = schemas.get(index).getAsJsonObject();
-            if (toolId.equals(schema.get("id").getAsString())) {
+            if (toolId.equals(schema.get("name").getAsString())) {
                 return true;
             }
         }

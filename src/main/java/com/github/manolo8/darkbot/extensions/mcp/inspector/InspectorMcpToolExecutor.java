@@ -44,6 +44,10 @@ public class InspectorMcpToolExecutor implements API.Singleton {
     return serializer.toJsonToolSchemas(toolRegistry.listSchemas());
   }
 
+  public List<InspectorToolSchemaSnapshot> listToolSchemas() {
+    return toolRegistry.listSchemas();
+  }
+
   private void registerBuiltInTools() {
     registerTool("list_roots", "Lista raíces de memoria conocidas para inspección", List.of(),
         List.of(field("roots", "InspectorRootSnapshot[]", true, "Raíces disponibles con id, label y address")),

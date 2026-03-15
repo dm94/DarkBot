@@ -23,6 +23,7 @@ import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpPluginReg
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpPermissionService;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpRateLimiter;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpSocketTransport;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpStdioTransport;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpToolExecutor;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpToolRegistry;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorToolSchemaRegistry;
@@ -65,6 +66,7 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
                 InspectorMcpToolExecutor.class,
                 InspectorMcpBridgeService.class,
                 InspectorMcpSocketTransport.class,
+                InspectorMcpStdioTransport.class,
                 NativeBrowserImpl.class);
         addDecorator(requireInstance(ListenerDecorator.class));
     }

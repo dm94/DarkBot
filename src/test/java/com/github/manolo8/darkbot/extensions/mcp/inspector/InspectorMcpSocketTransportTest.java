@@ -21,7 +21,7 @@ public class InspectorMcpSocketTransportTest {
         InspectorMcpBridgeService bridgeService = Mockito.mock(InspectorMcpBridgeService.class);
         String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}";
         String expectedResponse = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[]}";
-        Mockito.when(bridgeService.handleRequest(request)).thenReturn(expectedResponse);
+        Mockito.when(bridgeService.handleRequest(Mockito.eq(request), Mockito.anyString())).thenReturn(expectedResponse);
 
         ExecutorService acceptExecutor = Executors.newSingleThreadExecutor();
         ExecutorService clientExecutor = Executors.newFixedThreadPool(2);

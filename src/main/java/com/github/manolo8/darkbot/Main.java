@@ -28,6 +28,7 @@ import com.github.manolo8.darkbot.extensions.DarkBotPluginApiImpl;
 import com.github.manolo8.darkbot.extensions.features.FeatureDefinition;
 import com.github.manolo8.darkbot.extensions.features.FeatureRegistry;
 import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpSocketTransport;
+import com.github.manolo8.darkbot.extensions.mcp.inspector.InspectorMcpStdioTransport;
 import com.github.manolo8.darkbot.extensions.plugins.PluginHandler;
 import com.github.manolo8.darkbot.extensions.plugins.PluginIssue;
 import com.github.manolo8.darkbot.extensions.plugins.PluginListener;
@@ -206,6 +207,12 @@ public class Main extends Thread implements PluginListener, BotAPI {
             int port = transport.start();
             System.out.println("MCP transport started on localhost:" + port);
             Runtime.getRuntime().addShutdownHook(new Thread(transport::stop, "mcp-transport-shutdown"));
+            InspectorMcpStdioTransport stdioTransport = pluginAPI.requireInstance(InspectorMcpStdioTransport.class);
+            if (stdioTransport.isEnabled()) {
+                stdioTransport.start();
+                Runtime.getRuntime().addShutdownHook(new Thread(stdioTransport::stop, "mcp-stdio-shutdown"));
+                System.out.println("MCP stdio transport started");
+            }
         } catch (IllegalStateException e) {
             System.out.println("MCP transport disabled: " + e.getMessage());
         }
