@@ -145,10 +145,12 @@ public class MapManager implements Manager, StarSystemAPI {
         int currMap = API.readInt(address + 84);
         boolean switched = currMap != id;
 
-        entities.update(address);
-
-        if (switched)
+        if (switched) {
+            entities.clear();
             switchMap(main.starManager.byId(currMap));
+        }
+
+        entities.update(address);
     }
 
     private int lastNextMap;
