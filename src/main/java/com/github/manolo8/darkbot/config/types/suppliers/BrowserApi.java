@@ -7,6 +7,7 @@ import com.github.manolo8.darkbot.core.api.adapters.KekkaPlayerAdapter;
 import com.github.manolo8.darkbot.core.api.adapters.NoopAPIAdapter;
 import com.github.manolo8.darkbot.core.api.adapters.TanosAdapter;
 import com.github.manolo8.darkbot.utils.OSUtil;
+import eu.darkbot.sim.SimulatorAdapter;
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
@@ -21,7 +22,8 @@ public enum BrowserApi {
     TANOS_API(TanosAdapter.class),
     BACKPAGE_ONLY(BackpageAdapter.class),
     NO_OP_API(NoopAPIAdapter.class),
-    DARK_MEM_API(DarkMemAdapter.class);
+    DARK_MEM_API(DarkMemAdapter.class),
+    SIMULATOR_API(SimulatorAdapter.class);
 
     public final Class<? extends IDarkBotAPI> clazz;
 

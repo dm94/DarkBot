@@ -66,6 +66,7 @@ dependencies {
     //api("org.knowm.xchart", "xchart", "3.8.5")
 
     compileOnly("org.jetbrains", "annotations", "24.1.0")
+    implementation("eu.darkbot", "darkbot-sim", "0.1.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
     testImplementation("org.mockito:mockito-core:4.10.0")
