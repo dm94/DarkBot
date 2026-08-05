@@ -243,7 +243,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
      */
     private void runSession(SessionHttpClient http, SessionConnector.LoginProvider provider,
                             SessionConnector.LoginMethod method) throws IOException {
-        MapServerTable maps = new MapServerTable(http, MapServerTable.mapsPhpUrl(serverOf(provider)));
+        // URL is resolved lazily at refresh time: the portal login (which sets the server on
+        // the provider's identity) runs only when the connector starts, after this call.
+        MapServerTable maps = new MapServerTable(http, () -> MapServerTable.mapsPhpUrl(serverOf(provider)));
 
         PacketRegistry registry = PacketRegistry.loadDefault();
         EventBroker eventBroker = new EventBroker();

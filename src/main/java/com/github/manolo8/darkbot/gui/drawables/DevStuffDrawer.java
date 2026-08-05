@@ -56,12 +56,16 @@ public class DevStuffDrawer implements Drawable {
         }
 
         mg.setColor(PATH_COLOR);
-        for (PathPoint point : ((HeroManager) hero).drive.pathFinder.getPathPoints()) {
-            for (PathPoint other : point.lineOfSight) {
-                mg.drawLine(mg.toScreenPointX(point.x),
-                        mg.toScreenPointY(point.y),
-                        mg.toScreenPointX(point.x + (other.x - point.x) / 3),
-                        mg.toScreenPointY(point.y + (other.y - point.y) / 3));
+        // In Unity-packet mode the HeroAPI is not the core (memory) HeroManager, so the
+        // core pathfinder overlay is skipped (the injected `drive` below still draws).
+        if (hero instanceof HeroManager) {
+            for (PathPoint point : ((HeroManager) hero).drive.pathFinder.getPathPoints()) {
+                for (PathPoint other : point.lineOfSight) {
+                    mg.drawLine(mg.toScreenPointX(point.x),
+                            mg.toScreenPointY(point.y),
+                            mg.toScreenPointX(point.x + (other.x - point.x) / 3),
+                            mg.toScreenPointY(point.y + (other.y - point.y) / 3));
+                }
             }
         }
 
