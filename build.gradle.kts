@@ -62,6 +62,13 @@ dependencies {
     api("org.jgrapht", "jgrapht-core", "1.5.2")
     api("it.unimi.dsi", "fastutil-core", "8.5.13")
 
+    // Unity modules (Fase 4, Camino A): unity-game state managers + unity-transport codec/relay.
+    // unity-game's POM carries unity-transport/darkbot-util transitively, but declare them explicitly
+    // because darkbot-api publishes a dependency-less POM (see AGENTS.md gotcha).
+    implementation("eu.darkbot", "unity-game", "0.1.0")
+    implementation("eu.darkbot", "unity-transport", "0.1.0")
+    implementation("eu.darkbot", "darkbot-util", "0.9.9")
+
     // Testing stat time-series requires this
     //api("org.knowm.xchart", "xchart", "3.8.5")
 
@@ -73,6 +80,22 @@ dependencies {
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
 tasks.withType<JavaExec> { systemProperty("file.encoding", "UTF-8") }
+
+// JUnit 5 (jupiter) is the declared test framework; without this the Gradle test task
+// defaults to JUnit 4 and silently runs zero tests (AGENTS.md documents `gradle test`).
+tasks.test {
+    useJUnitPlatform()
+}
+
+// darkbot-util/darkbot-api exist under two group coordinates (eu.darkbot.DarkBotAPI via
+// JitPack darkbot-impl, eu.darkbot via the mavenLocal unity modules) with identical
+// 0.9.9 content — dedupe the distributions like the fat jar already does (EXCLUDE).
+tasks.withType<AbstractArchiveTask> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+tasks.withType<Sync> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
 tasks.wrapper {
     gradleVersion = "8.6"
