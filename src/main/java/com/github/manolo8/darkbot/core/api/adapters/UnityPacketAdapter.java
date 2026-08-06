@@ -78,8 +78,14 @@ public class UnityPacketAdapter extends GameAPIImpl<
         UnityPacketAdapter.NoOpInteraction,
         UnityPacketAdapter.UnityDirectInteraction> {
 
-    /** Unity client version sent in the VersionRequest handshake (harness default). */
-    public static final String UNITY_CLIENT_VERSION = "1.1.106";
+    /**
+     * Unity client version hash sent in the VersionRequest handshake and the LoginRequest
+     * {@code version} field (the wire value is the {@code packets.json → meta.versionHash}
+     * of the client build, not a "x.y.z" string). When the game updates, the map server
+     * rejects the old value with "Version mismatch: server version=X" — copy that X here.
+     * (2026-08-05 update: 1.1.106's 504b1f0c… → 8cf182a3…)
+     */
+    public static final String UNITY_CLIENT_VERSION = "8cf182a32819e300e1eb9a70b579d58c";
     /** Initial map id (portal jumps re-resolve in a later iteration). */
     public static final int MAP_ID = 1;
     /** How often the session state is re-published to {@code BotInstaller.invalid}. */
