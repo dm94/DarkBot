@@ -130,7 +130,50 @@ public class UnityPacketAdapter extends GameAPIImpl<
         botInstaller.settingsAddress.send(0L);
         botInstaller.connectionManagerAddress.send(0L);
 
+        // Build the game-state pipeline BEFORE Main's feature/drawable construction (line
+        // ~182 of Main.<init>) so GUI drawables injected via getOrCreate resolve to the
+        // packet-backed managers instead of the memory ones (the DI scan gives the last
+        // registered instance precedence; the Unity managers are registered right here,
+        // after the memory managers registered during Main init). If this ran in the
+        // session worker instead, the login (~seconds) would race the GUI construction
+        // and the drawables would capture dead memory managers — the empty GUI of the
+        // first live run.
+        buildPipeline();
+
         startSession();
+    }
+
+    /**
+     * Builds the game-state pipeline (managers + event broker) and applies the Fase 4 DI
+     * swap, synchronously in the constructor. The Unity managers are registered into the
+     * plugin API singleton set so any later {@code getOrCreate}/{@code requireAPI} of the
+     * packet-backed APIs (hero, entities, star system, stats, repair, movement, attack,
+     * ore, inventory, event broker) deterministically resolves to them — "last registered
+     * wins" in {@code PluginApiImpl}'s scan. The listener decorator is re-pointed at the
+     * unity event broker, so module {@code @Subscribe} handlers receive packet-derived
+     * events.
+     */
+    private void buildPipeline() {
+        final PacketRegistry registry;
+        try {
+            registry = PacketRegistry.loadDefault();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load the unity packets.json dictionary", e);
+        }
+        EventBroker eventBroker = new EventBroker();
+        StarSystemManager starSystem = new StarSystemManager();
+        HeroManager hero = new HeroManager(0, starSystem, eventBroker);
+        EntitiesManager entities = new EntitiesManager(eventBroker);
+        StatsManager stats = new StatsManager(eventBroker);
+        OreManager ores = new OreManager();
+        InventoryManager inventory = new InventoryManager(ores);
+        RepairManager repair = new RepairManager();
+        this.game = new UnityGameState(registry, eventBroker, starSystem, hero, entities, 0,
+                stats, repair, ores, inventory);
+
+        Main.INSTANCE.pluginAPI.registerUnityManagers(eventBroker,
+                eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
+                game.getMovement(), game.getAttack());
     }
 
     @Override
@@ -287,8 +330,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Builds the pipeline and connector, starts the session, then loops publishing the
-     * session state to {@code BotInstaller.invalid} until the JVM exits.
+     * Starts the map-server connection on the session worker and loops publishing the
+     * session state to {@code BotInstaller.invalid} until the JVM exits. The game-state
+     * pipeline is already built ({@link #buildPipeline()} runs in the constructor); this
+     * only resolves the map list, connects and feeds frames into it.
      */
     private void runSession(SessionHttpClient http, SessionConnector.LoginProvider provider,
                             SessionConnector.LoginMethod method) throws IOException {
@@ -296,30 +341,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
         // the provider's identity) runs only when the connector starts, after this call.
         MapServerTable maps = new MapServerTable(http, () -> MapServerTable.mapsPhpUrl(serverOf(provider)));
 
-        PacketRegistry registry = PacketRegistry.loadDefault();
-        EventBroker eventBroker = new EventBroker();
-        StarSystemManager starSystem = new StarSystemManager();
-        HeroManager hero = new HeroManager(0, starSystem, eventBroker);
-        EntitiesManager entities = new EntitiesManager(eventBroker);
-        StatsManager stats = new StatsManager(eventBroker);
-        OreManager ores = new OreManager();
-        InventoryManager inventory = new InventoryManager(ores);
-        RepairManager repair = new RepairManager();
-        UnityGameState g = new UnityGameState(registry, eventBroker, starSystem, hero, entities, 0,
-                stats, repair, ores, inventory);
-        this.game = g;
-
-        // Fase 4 DI swap, applied as soon as the pipeline is live (before the connector
-        // starts, so the managers are resolvable once the session goes READY):
-        //  - addInstance makes the packet-backed managers win the singleton scan (movement,
-        //    ores and inventory have no memory counterpart registered at this point);
-        //  - the requireAPI override in DarkBotPluginApiImpl routes the APIs that DO have
-        //    a memory counterpart (hero/entities/starSystem/stats/repair/eventBroker);
-        //  - the listener decorator is re-pointed at the unity event broker, so module
-        //    @Subscribe handlers receive packet-derived events.
-        Main.INSTANCE.pluginAPI.registerUnityManagers(eventBroker,
-                eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
-                g.getMovement(), g.getAttack());
+        UnityGameState g = game;
 
         // The connector relays every server→client frame into the game-state pipeline;
         // UnityGameState learns the hero id itself (first ShipInitializationCommand).

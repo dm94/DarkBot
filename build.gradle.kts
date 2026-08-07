@@ -50,9 +50,12 @@ dependencies {
     val flatLafVersion = "3.4"
 
     // use this if you want to use local(mavenLocal) darkbot API
-    val useLocalMaven = false
-    if (useLocalMaven) api("eu.darkbot", "darkbot-impl", apiVersion)
-    else api("eu.darkbot.DarkBotAPI", "darkbot-impl", apiVersion)
+    val useLocalMaven = true
+    if (useLocalMaven) {
+        api("eu.darkbot", "darkbot-impl", apiVersion)
+        // darkbot-api publishes a dependency-less POM, so it is declared explicitly (AGENTS.md gotcha)
+        api("eu.darkbot", "darkbot-api", apiVersion)
+    } else api("eu.darkbot.DarkBotAPI", "darkbot-impl", apiVersion)
 
     // have to keep version 2.8.9, in newer versions GSON calls `toString` of config enums upon creation
     api("com.google.code.gson", "gson", "2.8.9")
@@ -87,9 +90,11 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// darkbot-util/darkbot-api exist under two group coordinates (eu.darkbot.DarkBotAPI via
-// JitPack darkbot-impl, eu.darkbot via the mavenLocal unity modules) with identical
-// 0.9.9 content — dedupe the distributions like the fat jar already does (EXCLUDE).
+// All eu.darkbot dependencies now resolve from mavenLocal (darkbot-impl/api/util via the
+// explicit coordinates above, unity-game/unity-transport via their own POMs). darkbot-util
+// and darkbot-api end up on the classpath twice (direct + transitively through darkbot-impl
+// and unity-game), with identical 0.9.9 content — dedupe the distributions like the fat jar
+// already does (EXCLUDE).
 tasks.withType<AbstractArchiveTask> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
