@@ -6,7 +6,10 @@ import com.github.manolo8.darkbot.core.api.GameAPI;
 import com.github.manolo8.darkbot.core.api.GameAPIImpl;
 import com.github.manolo8.darkbot.core.entities.Box;
 import com.github.manolo8.darkbot.core.entities.Entity;
+import com.github.manolo8.darkbot.gui.login.UnityLoginForm;
+import com.github.manolo8.darkbot.gui.utils.Popups;
 import com.github.manolo8.darkbot.utils.StartupParams;
+import com.github.manolo8.darkbot.utils.login.UnityCredentials;
 import eu.darkbot.api.API;
 import eu.darkbot.api.game.other.Locatable;
 import eu.darkbot.api.managers.AttackAPI;
@@ -43,6 +46,8 @@ import eu.darkbot.unity.session.SessionIdentity;
 import java.io.IOException;
 import java.util.function.LongPredicate;
 
+import javax.swing.BorderFactory;
+
 /**
  * Packet-based API adapter (Camino A, Fase 4): runs the bot against the official Unity
  * client through the {@code unity-transport}/{@code unity-game} protocol stack instead of
@@ -64,11 +69,13 @@ import java.util.function.LongPredicate;
  * to {@code false} once the session is {@link GameState#isMapActive() READY} and the hero
  * snapshot arrived, and back to {@code true} when the session drops.
  *
- * <p><b>Credentials.</b> Read from the {@code -login} properties file (see {@link
- * StartupParams.AutoLoginProps}): {@code username+password} → portal login
- * ({@link BigPointPortalHandler}); {@code server+sid} → saved-session reconnect
- * ({@link SavedSessionProvider}). Without them the adapter stays invalid and logs the
- * reason. The Flash login dialog / preloader flow is deliberately not reused.
+ * <p><b>Credentials.</b> Either read from the {@code -login} properties file (see {@link
+ * StartupParams.AutoLoginProps}): {@code username+password}  portal login
+ * ({@link BigPointPortalHandler}); {@code server+sid}  saved-session reconnect
+ * ({@link SavedSessionProvider}) - or, when no {@code -login} file is supplied, collected
+ * from the {@link UnityLoginForm} popup (the Unity tab-set of the login dialog lets the
+ * user pick between portal credentials and a saved dosid, without any Flash preloader
+ * flow). Without either, the adapter stays invalid and logs the reason.
  */
 public class UnityPacketAdapter extends GameAPIImpl<
         UnityPacketAdapter.NoOpWindow,
@@ -176,61 +183,68 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Starts the Unity session on a daemon worker: resolves credentials (portal auto-detect
-     * may take several POSTs), builds the game-state pipeline and connector, then keeps
-     * {@code BotInstaller.invalid} in sync with the session state.
+     * Starts the Unity session on a daemon worker: resolves credentials (from the
+     * {@code -login} properties or the Unity login popup, whichever the user picked;
+     * portal auto-detect may take several POSTs), builds the game-state pipeline and
+     * connector, then keeps {@code BotInstaller.invalid} in sync with the session state.
      */
     private void startSession() {
-        StartupParams.AutoLoginProps props = params.getAutoLoginProps();
-        if (props == null) {
-            System.out.println("[unity] No -login properties found: UnityPacketAdapter needs username/password"
-                    + " (or server+sid) in a login properties file to connect.");
+        String[] creds = resolveCredentials();
+        if (creds == null) {
+            System.out.println("[unity] No credentials given: the Unity session will not start."
+                    + " Supply a -login properties file or use the Unity login dialog.");
             return;
         }
 
+        String server = creds[0];
+        String user = creds[1];
+        String pass = creds[2];
+        String dosid = creds[3];
+
         Thread worker = new Thread(() -> {
             try {
-                String server = props.getServer();
-                String user = props.getUsername();
-                String pass = props.getPassword();
-                String dosid = props.getSID();
+                // Mutable copies: the lambda body reassigns server during auto-detect.
+                String srv = server;
+                String usr = user;
+                String pwd = pass;
+                String dsd = dosid;
 
                 SessionHttpClient http = new SessionHttpClient();
                 http.setUnityMode(true, UNITY_CLIENT_VERSION);
 
-                if ((server == null || server.isEmpty()) && user != null && !user.isEmpty()) {
+                if ((srv == null || srv.isEmpty()) && usr != null && !usr.isEmpty()) {
                     System.out.println("[unity] Detecting account server (one POST per known portal)…");
-                    server = BigPointPortalHandler.detectServer(http, user, pass, null);
+                    srv = BigPointPortalHandler.detectServer(http, usr, pwd, null);
                 }
-                if (server == null || server.isEmpty()) {
-                    System.out.println("[unity] No server known: set server=<universe> in the login properties file.");
+                if (srv == null || srv.isEmpty()) {
+                    System.out.println("[unity] No server known: set server=<universe> (login file or Unity login dialog).");
                     return;
                 }
-                String lang = BigPointPortalHandler.langFor(server);
-                System.out.println("[unity] Connecting to " + server + " (lang=" + lang + ", version="
+                String lang = BigPointPortalHandler.langFor(srv);
+                System.out.println("[unity] Connecting to " + srv + " (lang=" + lang + ", version="
                         + UNITY_CLIENT_VERSION + ", map " + MAP_ID + ")");
 
                 SessionConnector.LoginProvider provider;
                 SessionConnector.LoginMethod method;
-                if (dosid != null && !dosid.isEmpty()) {
-                    String sid = BigPointPortalHandler.sidFromDosid(http, server, lang, dosid);
+                if (dsd != null && !dsd.isEmpty()) {
+                    String sid = BigPointPortalHandler.sidFromDosid(http, srv, lang, dsd);
                     SessionIdentity identity = new SessionIdentity();
-                    identity.setServer(server);
+                    identity.setServer(srv);
                     identity.setPlatform(SessionConnector.PLATFORM_UNITY);
                     identity.setSid(sid);
                     SavedAccount account = new SavedAccount();
-                    account.server = server;
-                    account.dosid = dosid;
+                    account.server = srv;
+                    account.dosid = dsd;
                     account.lastMethod = "SID";
                     provider = new SavedSessionProvider(identity, account, UNITY_CLIENT_VERSION, MAP_ID);
                     method = SessionConnector.LoginMethod.SID;
-                } else if (user != null && !user.isEmpty()) {
-                    BigPointPortalHandler portal = new BigPointPortalHandler(http, server, lang, user, pass);
+                } else if (usr != null && !usr.isEmpty()) {
+                    BigPointPortalHandler portal = new BigPointPortalHandler(http, srv, lang, usr, pwd);
                     provider = new PortalLoginProvider(portal, new SessionIdentity(), UNITY_CLIENT_VERSION, MAP_ID);
                     method = SessionConnector.LoginMethod.UNITY;
                 } else {
                     System.out.println("[unity] No credentials: set username/password or server+sid"
-                            + " in the login properties file.");
+                            + " (in the login properties file or the Unity login dialog).");
                     return;
                 }
 
@@ -241,6 +255,35 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }, "darkbot-unity-session");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * Resolves the Unity session credentials: from the {@code -login} properties file when
+     * provided (headless/scripted runs), otherwise from the {@link UnityLoginForm} popup
+     * shown on the EDT (lets the user pick between portal login and a saved dosid session).
+     *
+     * @return {@code [server, user, pass, dosid]}, or {@code null} if the user dismissed
+     *         the dialog without providing credentials
+     */
+    private String[] resolveCredentials() {
+        StartupParams.AutoLoginProps props = params.getAutoLoginProps();
+        if (props != null) {
+            return new String[] {props.getServer(), props.getUsername(), props.getPassword(), props.getSID()};
+        }
+
+        UnityLoginForm form = new UnityLoginForm();
+        Popups.of("Unity Login", form)
+                .options()
+                .border(BorderFactory.createEmptyBorder(0, 0, 5, 0))
+                .defaultButton(form.getLoginBtn())
+                .showSync();
+
+        UnityCredentials creds = form.getResult();
+        if (creds == null) {
+            System.out.println("[unity] Unity login dialog was dismissed without logging in");
+            return null;
+        }
+        return new String[] {creds.server, creds.username, creds.password, creds.sid};
     }
 
     /**
