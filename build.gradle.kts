@@ -68,8 +68,8 @@ dependencies {
     // Unity modules (Fase 4, Camino A): unity-game state managers + unity-transport codec/relay.
     // unity-game's POM carries unity-transport/darkbot-util transitively, but declare them explicitly
     // because darkbot-api publishes a dependency-less POM (see AGENTS.md gotcha).
-    implementation("eu.darkbot", "unity-game", "0.1.0")
-    implementation("eu.darkbot", "unity-transport", "0.1.0")
+    implementation("eu.darkbot", "unity-game", "0.1.4")
+    implementation("eu.darkbot", "unity-transport", "0.1.3")
     implementation("eu.darkbot", "darkbot-util", "0.9.9")
 
     // Testing stat time-series requires this

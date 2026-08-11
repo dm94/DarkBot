@@ -8,6 +8,12 @@
 dependency-reduced-pom.xml
 *.iml
 
+# Local credentials/session files
+/login.unity.properties
+/login.unity.capture.properties
+/login.unity.diagnostic.properties
+/login.unity.test.properties
+
 # Leftovers from running the bot
 *.json
 /logs

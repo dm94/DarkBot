@@ -43,7 +43,9 @@ import eu.darkbot.unity.session.SessionConnector;
 import eu.darkbot.unity.session.SessionHttpClient;
 import eu.darkbot.unity.session.SessionIdentity;
 
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.Properties;
 import java.util.function.LongPredicate;
 
 import javax.swing.BorderFactory;
@@ -71,11 +73,12 @@ import javax.swing.BorderFactory;
  *
  * <p><b>Credentials.</b> Either read from the {@code -login} properties file (see {@link
  * StartupParams.AutoLoginProps}): {@code username+password}  portal login
- * ({@link BigPointPortalHandler}); {@code server+sid}  saved-session reconnect
- * ({@link SavedSessionProvider}) - or, when no {@code -login} file is supplied, collected
- * from the {@link UnityLoginForm} popup (the Unity tab-set of the login dialog lets the
- * user pick between portal credentials and a saved dosid, without any Flash preloader
- * flow). Without either, the adapter stays invalid and logs the reason.
+ * ({@link BigPointPortalHandler}); {@code server+sid}  saved portal-cookie exchange;
+ * or {@code gameSid+server+userId+instance}  direct restore of a raw gameserver SID
+ * captured from the Unity client's LoginRequest (bypassing the portal/WAF). When no
+ * {@code -login} file is supplied, credentials are collected from the {@link UnityLoginForm}
+ * popup (portal credentials or a saved dosid). Without either, the adapter stays invalid and
+ * logs the reason.
  */
 public class UnityPacketAdapter extends GameAPIImpl<
         UnityPacketAdapter.NoOpWindow,
@@ -100,8 +103,44 @@ public class UnityPacketAdapter extends GameAPIImpl<
 
     private volatile SessionConnector connector;
     private volatile UnityGameState game;
+    private volatile boolean traceOutbound;
+    private volatile boolean diagnosticMove;
+    private volatile int diagnosticMoveDistance;
 
     private BotInstaller botInstaller;
+
+    /** Credentials/session values resolved before the asynchronous worker starts. */
+    private static final class SessionInput {
+        final String server;
+        final String username;
+        final String password;
+        final String dosid;
+        final String gameSid;
+        final int userId;
+        final String instance;
+        final boolean miniClient;
+        final int mapId;
+        final boolean traceOutbound;
+        final boolean diagnosticMove;
+        final int diagnosticMoveDistance;
+
+        SessionInput(String server, String username, String password, String dosid,
+                     String gameSid, int userId, String instance, boolean miniClient, int mapId,
+                     boolean traceOutbound, boolean diagnosticMove, int diagnosticMoveDistance) {
+            this.server = server;
+            this.username = username;
+            this.password = password;
+            this.dosid = dosid;
+            this.gameSid = gameSid;
+            this.userId = userId;
+            this.instance = instance;
+            this.miniClient = miniClient;
+            this.mapId = mapId;
+            this.traceOutbound = traceOutbound;
+            this.diagnosticMove = diagnosticMove;
+            this.diagnosticMoveDistance = diagnosticMoveDistance;
+        }
+    }
 
     public UnityPacketAdapter(StartupParams params) {
         super(params,
@@ -232,28 +271,56 @@ public class UnityPacketAdapter extends GameAPIImpl<
      * connector, then keeps {@code BotInstaller.invalid} in sync with the session state.
      */
     private void startSession() {
-        String[] creds = resolveCredentials();
-        if (creds == null) {
+        SessionInput input = resolveCredentials();
+        if (input == null) {
             System.out.println("[unity] No credentials given: the Unity session will not start."
                     + " Supply a -login properties file or use the Unity login dialog.");
             return;
         }
 
-        String server = creds[0];
-        String user = creds[1];
-        String pass = creds[2];
-        String dosid = creds[3];
+        this.traceOutbound = input.traceOutbound;
+        this.diagnosticMove = input.diagnosticMove;
+        this.diagnosticMoveDistance = Math.max(1, input.diagnosticMoveDistance);
 
         Thread worker = new Thread(() -> {
             try {
                 // Mutable copies: the lambda body reassigns server during auto-detect.
-                String srv = server;
-                String usr = user;
-                String pwd = pass;
-                String dsd = dosid;
+                String srv = input.server;
+                String usr = input.username;
+                String pwd = input.password;
+                String dsd = input.dosid;
+                String rawGameSid = input.gameSid;
 
                 SessionHttpClient http = new SessionHttpClient();
                 http.setUnityMode(true, UNITY_CLIENT_VERSION);
+                if (rawGameSid != null && !rawGameSid.isEmpty()) {
+                    if (srv == null || srv.isEmpty()) {
+                        throw new IOException("gameSid login requires server=<universe>");
+                    }
+                    if (input.userId <= 0 || input.instance == null || input.instance.isEmpty()) {
+                        throw new IOException("gameSid login requires userId=<id> and instance=<pid>");
+                    }
+                    int mapId = input.mapId > 0 ? input.mapId : MAP_ID;
+                    SessionIdentity identity = new SessionIdentity();
+                    identity.setServer(srv);
+                    identity.setSid(rawGameSid);
+                    identity.setPlatform(SessionConnector.PLATFORM_UNITY);
+                    if (input.instance != null && !input.instance.isEmpty()) {
+                        identity.setInstance(input.instance);
+                    }
+                    SavedAccount account = new SavedAccount();
+                    account.server = srv;
+                    account.userId = input.userId;
+                    account.lastMethod = "GAME_SID";
+                    SessionConnector.LoginProvider provider =
+                            new SavedSessionProvider(identity, account, UNITY_CLIENT_VERSION,
+                                    mapId, input.miniClient);
+                    System.out.println("[unity] Using captured gameSid directly (server=" + srv
+                            + ", userId=" + input.userId + ", instance=" + input.instance
+                            + ", map=" + mapId + ")");
+                    runSession(http, provider, SessionConnector.LoginMethod.SID);
+                    return;
+                }
 
                 if ((srv == null || srv.isEmpty()) && usr != null && !usr.isEmpty()) {
                     System.out.println("[unity] Detecting account server (one POST per known portal)…");
@@ -264,8 +331,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     return;
                 }
                 String lang = BigPointPortalHandler.langFor(srv);
+                int requestedMap = input.mapId > 0 ? input.mapId : MAP_ID;
                 System.out.println("[unity] Connecting to " + srv + " (lang=" + lang + ", version="
-                        + UNITY_CLIENT_VERSION + ", map " + MAP_ID + ")");
+                        + UNITY_CLIENT_VERSION + ", map " + requestedMap + ")");
 
                 SessionConnector.LoginProvider provider;
                 SessionConnector.LoginMethod method;
@@ -278,12 +346,16 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     SavedAccount account = new SavedAccount();
                     account.server = srv;
                     account.dosid = dsd;
+                    account.userId = input.userId;
                     account.lastMethod = "SID";
-                    provider = new SavedSessionProvider(identity, account, UNITY_CLIENT_VERSION, MAP_ID);
+                    int mapId = input.mapId > 0 ? input.mapId : MAP_ID;
+                    provider = new SavedSessionProvider(identity, account, UNITY_CLIENT_VERSION, mapId,
+                            input.miniClient);
                     method = SessionConnector.LoginMethod.SID;
                 } else if (usr != null && !usr.isEmpty()) {
                     BigPointPortalHandler portal = new BigPointPortalHandler(http, srv, lang, usr, pwd);
-                    provider = new PortalLoginProvider(portal, new SessionIdentity(), UNITY_CLIENT_VERSION, MAP_ID);
+                    provider = new PortalLoginProvider(portal, new SessionIdentity(), UNITY_CLIENT_VERSION,
+                            input.mapId > 0 ? input.mapId : MAP_ID);
                     method = SessionConnector.LoginMethod.UNITY;
                 } else {
                     System.out.println("[unity] No credentials: set username/password or server+sid"
@@ -305,13 +377,44 @@ public class UnityPacketAdapter extends GameAPIImpl<
      * provided (headless/scripted runs), otherwise from the {@link UnityLoginForm} popup
      * shown on the EDT (lets the user pick between portal login and a saved dosid session).
      *
-     * @return {@code [server, user, pass, dosid]}, or {@code null} if the user dismissed
+     * @return the resolved portal/direct-session input, or {@code null} if the user dismissed
      *         the dialog without providing credentials
      */
-    private String[] resolveCredentials() {
+    private SessionInput resolveCredentials() {
         StartupParams.AutoLoginProps props = params.getAutoLoginProps();
         if (props != null) {
-            return new String[] {props.getServer(), props.getUsername(), props.getPassword(), props.getSID()};
+            String gameSid = props.getGameSID();
+            String userId = props.getUserId();
+            String instance = props.getInstance();
+            String miniClient = props.getMiniClient();
+            String captureFile = props.getCapturedLoginFile();
+            if (captureFile != null && !captureFile.trim().isEmpty()) {
+                try {
+                    Properties captured = new Properties();
+                    try (FileInputStream in = new FileInputStream(captureFile.trim())) {
+                        captured.load(in);
+                    }
+                    gameSid = first(captured.getProperty("gameSid"),
+                            captured.getProperty("sessionID"), gameSid);
+                    userId = first(captured.getProperty("userId"),
+                            captured.getProperty("userID"), userId);
+                    instance = first(captured.getProperty("instance"),
+                            captured.getProperty("instanceId"), instance);
+                    miniClient = first(captured.getProperty("miniClient"),
+                            captured.getProperty("isMiniClient"), miniClient);
+                    System.out.println("[unity] Loaded captured login from " + captureFile.trim());
+                } catch (IOException e) {
+                    System.err.println("[unity] Could not read captured login file "
+                            + captureFile.trim() + ": " + e.getMessage());
+                }
+            }
+            return new SessionInput(
+                    props.getServer(), props.getUsername(), props.getPassword(), props.getSID(),
+                    gameSid, parseInt(userId, 0), instance,
+                    parseBooleanInt(miniClient, false), parseInt(props.getMapId(), MAP_ID),
+                    parseBooleanInt(props.getTraceOutbound(), false),
+                    parseBooleanInt(props.getDiagnosticMove(), false),
+                    parseInt(props.getDiagnosticMoveDistance(), 200));
         }
 
         UnityLoginForm form = new UnityLoginForm();
@@ -326,7 +429,27 @@ public class UnityPacketAdapter extends GameAPIImpl<
             System.out.println("[unity] Unity login dialog was dismissed without logging in");
             return null;
         }
-        return new String[] {creds.server, creds.username, creds.password, creds.sid};
+        return new SessionInput(creds.server, creds.username, creds.password, creds.sid,
+                null, 0, null, false, MAP_ID, false, false, 200);
+    }
+
+    private static String first(String value, String fallback, String defaultValue) {
+        return value != null && !value.trim().isEmpty() ? value :
+                (fallback != null && !fallback.trim().isEmpty() ? fallback : defaultValue);
+    }
+
+    private static int parseInt(String value, int fallback) {
+        if (value == null || value.trim().isEmpty()) return fallback;
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static boolean parseBooleanInt(String value, boolean fallback) {
+        if (value == null || value.trim().isEmpty()) return fallback;
+        return "1".equals(value.trim()) || Boolean.parseBoolean(value.trim());
     }
 
     /**
@@ -353,14 +476,21 @@ public class UnityPacketAdapter extends GameAPIImpl<
         // Outbound channel: every manager/entity sends through the live connection.
         g.setPacketSender(packet -> {
             GameConnection conn = c.connection();
-            if (conn == null) return false;
+            if (conn == null) {
+                if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " skipped: no connection");
+                return false;
+            }
             try {
                 conn.send(packet);
+                if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " sent");
                 return true;
             } catch (IOException e) {
+                if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " failed: " + e.getMessage());
                 return false;
             }
         });
+
+        if (diagnosticMove) startDiagnosticMove(c, g);
 
         try {
             while (true) {
@@ -370,6 +500,42 @@ public class UnityPacketAdapter extends GameAPIImpl<
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * Sends one controlled movement after the live hero snapshot arrives. This is deliberately
+     * opt-in and exists only to separate packet transport from module target-selection logic.
+     */
+    private void startDiagnosticMove(SessionConnector c, UnityGameState g) {
+        Thread move = new Thread(() -> {
+            long deadline = System.currentTimeMillis() + 30_000;
+            while (System.currentTimeMillis() < deadline && !isSessionReady()) {
+                try {
+                    Thread.sleep(250);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            if (!isSessionReady() || c.connection() == null) {
+                System.out.println("[unity-diagnostic] move skipped: session did not become ready");
+                return;
+            }
+            eu.darkbot.api.game.other.Location from = g.getMovement().getCurrentLocation();
+            double distance = Math.max(1, diagnosticMoveDistance);
+            double targetX = from.getX() + distance;
+            double targetY = from.getY();
+            if (!g.getMovement().canMove(targetX, targetY)) targetX = from.getX() - distance;
+            if (!g.getMovement().canMove(targetX, targetY)) {
+                System.out.println("[unity-diagnostic] move skipped: no valid target from " + from);
+                return;
+            }
+            System.out.println("[unity-diagnostic] move " + (int) from.getX() + "," + (int) from.getY()
+                    + " -> " + (int) targetX + "," + (int) targetY);
+            g.getMovement().moveTo(targetX, targetY);
+        }, "darkbot-unity-diagnostic-move");
+        move.setDaemon(true);
+        move.start();
     }
 
     /** Derives the game server for the maps URL from the provider's session identity. */

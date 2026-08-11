@@ -64,7 +64,9 @@ public class StartupParams implements API.Singleton {
     }
 
     public enum PropertyKey {
-        USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, ALLOW_STORE_SID;
+        USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, GAME_SID, USER_ID, INSTANCE,
+        MINI_CLIENT, MAP_ID, CAPTURED_LOGIN_FILE, TRACE_OUTBOUND, DIAGNOSTIC_MOVE,
+        DIAGNOSTIC_MOVE_DISTANCE, ALLOW_STORE_SID;
         @Override
         public String toString() {
             return this.name().toLowerCase(Locale.ROOT);
@@ -143,6 +145,11 @@ public class StartupParams implements API.Singleton {
             return prop.getProperty(key.toString());
         }
 
+        private String getProperty(PropertyKey key, String camelCaseAlias) {
+            String value = getProperty(key);
+            return value != null ? value : prop.getProperty(camelCaseAlias);
+        }
+
         private void setProperty(PropertyKey key, String val) {
             prop.setProperty(key.toString(), val);
         }
@@ -166,6 +173,51 @@ public class StartupParams implements API.Singleton {
 
         public String getSID() {
             return getProperty(PropertyKey.SID);
+        }
+
+        /** Raw map-server SID captured from the Unity client's LoginRequest. */
+        public String getGameSID() {
+            return getProperty(PropertyKey.GAME_SID, "gameSid");
+        }
+
+        /** Player id captured from the Unity client's LoginRequest. */
+        public String getUserId() {
+            return getProperty(PropertyKey.USER_ID, "userId");
+        }
+
+        /** Gameserver instance/pid captured from the Unity client's LoginRequest. */
+        public String getInstance() {
+            return getProperty(PropertyKey.INSTANCE, "instance");
+        }
+
+        /** Whether the LoginRequest should identify this connection as a mini client. */
+        public String getMiniClient() {
+            return getProperty(PropertyKey.MINI_CLIENT, "miniClient");
+        }
+
+        /** Initial map id to resolve in maps.php. */
+        public String getMapId() {
+            return getProperty(PropertyKey.MAP_ID, "mapId");
+        }
+
+        /** Optional path to a harness captured-login.properties file. */
+        public String getCapturedLoginFile() {
+            return getProperty(PropertyKey.CAPTURED_LOGIN_FILE, "capturedLoginFile");
+        }
+
+        /** Enables logging of outbound packet names for a diagnostic run. */
+        public String getTraceOutbound() {
+            return getProperty(PropertyKey.TRACE_OUTBOUND, "traceOutbound");
+        }
+
+        /** Enables one controlled movement after the session reaches READY. */
+        public String getDiagnosticMove() {
+            return getProperty(PropertyKey.DIAGNOSTIC_MOVE, "diagnosticMove");
+        }
+
+        /** Distance in map units for the one-shot diagnostic movement. */
+        public String getDiagnosticMoveDistance() {
+            return getProperty(PropertyKey.DIAGNOSTIC_MOVE_DISTANCE, "diagnosticMoveDistance");
         }
 
         public boolean isAllowStoreSID() {
