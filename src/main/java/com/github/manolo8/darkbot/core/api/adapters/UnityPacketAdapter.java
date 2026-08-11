@@ -563,12 +563,17 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 System.out.println("[unity-s2c] UpdateCargoSpaceCommand cargoMax="
                         + inboundReader.intValue("cargoSpaceMax"));
             } else if ("AttributeOreCountUpdateCommand".equals(name)) {
-                long cargo = 0;
+                StringBuilder ores = new StringBuilder();
+                long oreTotal = 0;
                 for (Map<String, Object> elem : inboundReader.listElements("oreCountList")) {
+                    Object type = elem.get("oreCountList.elem.oreType.typeValue");
                     Object value = elem.get("oreCountList.elem.count");
-                    if (value instanceof Number) cargo += Math.max(0, ((Number) value).longValue());
+                    if (value instanceof Number) oreTotal += Math.max(0, ((Number) value).longValue());
+                    if (ores.length() > 0) ores.append(',');
+                    ores.append(type).append('=').append(value);
                 }
-                System.out.println("[unity-s2c] AttributeOreCountUpdateCommand oreTotal=" + cargo);
+                System.out.println("[unity-s2c] AttributeOreCountUpdateCommand oreTotal="
+                        + oreTotal + " values=" + ores);
             } else if ("LMCollectResourcesCommand".equals(name)) {
                 long collected = 0;
                 for (Map<String, Object> elem : inboundReader.listElements("contentList")) {
@@ -616,6 +621,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     default:
                         break;
                 }
+            } else {
+                // Diagnostic mode logs packet names only; never dump arbitrary fields or SID data.
+                System.out.println("[unity-s2c] packet=" + name);
             }
         } catch (IllegalArgumentException ignored) {
             // The game-state pipeline owns malformed-frame handling; tracing must not affect it.
