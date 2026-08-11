@@ -551,6 +551,17 @@ public class UnityPacketAdapter extends GameAPIImpl<
             } else if ("HeroMoveCommand".equals(name)) {
                 System.out.println("[unity-s2c] HeroMoveCommand x=" + inboundReader.intValue("x")
                         + " y=" + inboundReader.intValue("y"));
+            } else if ("HitpointInfoCommand".equals(name)) {
+                System.out.println("[unity-s2c] HitpointInfoCommand hp="
+                        + inboundReader.values().get("hitpoints") + " hpMax="
+                        + inboundReader.values().get("hitpointsMax") + " nanoHull="
+                        + inboundReader.intValue("nanoHull"));
+            } else if ("ShipSelectionCommand".equals(name)) {
+                System.out.println("[unity-s2c] ShipSelectionCommand userId="
+                        + inboundReader.intValue("userId") + " hp="
+                        + inboundReader.values().get("hitpoints") + " hpMax="
+                        + inboundReader.values().get("hitpointsMax") + " shield="
+                        + inboundReader.intValue("shield"));
             } else if ("ShipInitializationCommand".equals(name)) {
                 System.out.println("[unity-s2c] ShipInitializationCommand cargoFree="
                         + inboundReader.intValue("cargoSpace") + " cargoMax="
