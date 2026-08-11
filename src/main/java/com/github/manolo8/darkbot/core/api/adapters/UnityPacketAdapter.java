@@ -550,6 +550,17 @@ public class UnityPacketAdapter extends GameAPIImpl<
             } else if ("HeroMoveCommand".equals(name)) {
                 System.out.println("[unity-s2c] HeroMoveCommand x=" + inboundReader.intValue("x")
                         + " y=" + inboundReader.intValue("y"));
+            } else if ("ShipInitializationCommand".equals(name)) {
+                System.out.println("[unity-s2c] ShipInitializationCommand cargoFree="
+                        + inboundReader.intValue("cargoSpace") + " cargoMax="
+                        + inboundReader.intValue("cargoSpaceMax"));
+            } else if ("AttributeSpaceUpdateCommand".equals(name)) {
+                System.out.println("[unity-s2c] AttributeSpaceUpdateCommand spaceType="
+                        + inboundReader.intValue("spaceType") + " spaceLeft="
+                        + inboundReader.intValue("spaceLeft"));
+            } else if ("UpdateCargoSpaceCommand".equals(name)) {
+                System.out.println("[unity-s2c] UpdateCargoSpaceCommand cargoMax="
+                        + inboundReader.intValue("cargoSpaceMax"));
             } else if (isTraceableInboundAction(name)) {
                 switch (name) {
                     case "RemoveCollectableCommand":
