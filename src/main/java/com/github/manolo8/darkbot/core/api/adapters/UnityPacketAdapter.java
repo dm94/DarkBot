@@ -48,6 +48,7 @@ import eu.darkbot.unity.session.SessionIdentity;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.Map;
 import java.util.Properties;
 import java.util.function.LongPredicate;
 
@@ -561,6 +562,20 @@ public class UnityPacketAdapter extends GameAPIImpl<
             } else if ("UpdateCargoSpaceCommand".equals(name)) {
                 System.out.println("[unity-s2c] UpdateCargoSpaceCommand cargoMax="
                         + inboundReader.intValue("cargoSpaceMax"));
+            } else if ("AttributeOreCountUpdateCommand".equals(name)) {
+                long cargo = 0;
+                for (Map<String, Object> elem : inboundReader.listElements("oreCountList")) {
+                    Object value = elem.get("oreCountList.elem.count");
+                    if (value instanceof Number) cargo += Math.max(0, ((Number) value).longValue());
+                }
+                System.out.println("[unity-s2c] AttributeOreCountUpdateCommand oreTotal=" + cargo);
+            } else if ("LMCollectResourcesCommand".equals(name)) {
+                long collected = 0;
+                for (Map<String, Object> elem : inboundReader.listElements("contentList")) {
+                    Object value = elem.get("contentList.elem.count");
+                    if (value instanceof Number) collected += Math.max(0, ((Number) value).longValue());
+                }
+                System.out.println("[unity-s2c] LMCollectResourcesCommand collected=" + collected);
             } else if (isTraceableInboundAction(name)) {
                 switch (name) {
                     case "RemoveCollectableCommand":
