@@ -8,6 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class UnityPacketAdapterTest {
 
     @Test
+    void actionConfirmationsAreTraceableWithoutTracingUnrelatedPackets() {
+        assertTrue(UnityPacketAdapter.isTraceableInboundAction("RemoveCollectableCommand"));
+        assertTrue(UnityPacketAdapter.isTraceableInboundAction("AttackHitCommand"));
+        assertTrue(UnityPacketAdapter.isTraceableInboundAction("ShipDestroyedCommand"));
+        assertFalse(UnityPacketAdapter.isTraceableInboundAction("ShipCreateCommand"));
+        assertFalse(UnityPacketAdapter.isTraceableInboundAction("LoginResponse"));
+    }
+
+    @Test
     void modulesTickOnlyOnReadyLiveSessions() {
         assertTrue(UnityPacketAdapter.canTickModule(true, false));
         assertFalse(UnityPacketAdapter.canTickModule(false, false));

@@ -296,7 +296,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
             return;
         }
 
-        this.traceOutbound = input.traceOutbound;
+        this.traceOutbound = input.traceOutbound
+                || Boolean.getBoolean("darkbot.unity.traceOutbound")
+                || "1".equals(System.getenv("DARKBOT_UNITY_TRACE_OUTBOUND"));
         this.diagnosticMove = input.diagnosticMove;
         this.diagnosticMoveDistance = Math.max(1, input.diagnosticMoveDistance);
 
@@ -489,7 +491,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
         FrameListener listener = g;
         if (traceOutbound) {
             listener = (clientToServer, payload) -> {
-                if (!clientToServer) traceInboundMovement(payload);
+                if (!clientToServer) traceInboundFrame(payload);
                 g.onFrame(clientToServer, payload);
             };
         }
@@ -507,6 +509,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
             }
             try {
                 conn.send(packet);
+                g.onOutbound(packet);
                 if (traceOutbound) {
                     String details = "MoveRequest".equals(packet.name()) ? " " + packet.values() : "";
                     System.out.println("[unity-c2s] " + packet.name() + details + " sent");
@@ -520,9 +523,14 @@ public class UnityPacketAdapter extends GameAPIImpl<
 
         if (diagnosticMove) startDiagnosticMove(c, g);
 
+        long nextMetricsLog = System.currentTimeMillis() + 10_000;
         try {
             while (true) {
                 botInstaller.invalid.send(!isSessionReady());
+                if (traceOutbound && System.currentTimeMillis() >= nextMetricsLog) {
+                    System.out.println("[unity-metrics] " + g.getActionMetrics().status());
+                    nextMetricsLog = System.currentTimeMillis() + 10_000;
+                }
                 Thread.sleep(VALIDITY_POLL_MS);
             }
         } catch (InterruptedException e) {
@@ -530,8 +538,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
     }
 
-    /** Logs the server-side movement acknowledgement without dumping unrelated packet data. */
-    private void traceInboundMovement(byte[] payload) {
+    /** Logs movement and action confirmations without dumping session or unrelated packet data. */
+    private void traceInboundFrame(byte[] payload) {
         try {
             PacketDef def = inboundReader.read(payload);
             String name = def.name();
@@ -542,9 +550,66 @@ public class UnityPacketAdapter extends GameAPIImpl<
             } else if ("HeroMoveCommand".equals(name)) {
                 System.out.println("[unity-s2c] HeroMoveCommand x=" + inboundReader.intValue("x")
                         + " y=" + inboundReader.intValue("y"));
+            } else if (isTraceableInboundAction(name)) {
+                switch (name) {
+                    case "RemoveCollectableCommand":
+                        System.out.println("[unity-s2c] RemoveCollectableCommand hash="
+                                + inboundReader.stringValue("hash") + " collected="
+                                + inboundReader.intValue("collected"));
+                        break;
+                    case "CollectionBeamStartCommand":
+                        System.out.println("[unity-s2c] CollectionBeamStartCommand mapObjectId="
+                                + inboundReader.intValue("mapObjectId") + " duration="
+                                + inboundReader.intValue("duration"));
+                        break;
+                    case "CollectionBeamStopCommand":
+                        System.out.println("[unity-s2c] CollectionBeamStopCommand mapObjectId="
+                                + inboundReader.intValue("mapObjectId"));
+                        break;
+                    case "AttackLaserRunCommand":
+                        System.out.println("[unity-s2c] AttackLaserRunCommand attackerId="
+                                + inboundReader.intValue("attackerId") + " targetId="
+                                + inboundReader.intValue("targetId"));
+                        break;
+                    case "AttackAbortLaserCommand":
+                        System.out.println("[unity-s2c] AttackAbortLaserCommand uid="
+                                + inboundReader.intValue("uid"));
+                        break;
+                    case "AttackHitCommand":
+                    case "AttackHitNoLockCommand":
+                        System.out.println("[unity-s2c] " + name + " attackerId="
+                                + inboundReader.intValue("attackerId") + " victimId="
+                                + inboundReader.intValue("victimId") + " damage="
+                                + inboundReader.intValue("damage") + " victimHitpoints="
+                                + inboundReader.values().get("victimHitpoints"));
+                        break;
+                    case "ShipDestroyedCommand":
+                        System.out.println("[unity-s2c] ShipDestroyedCommand destroyedUserId="
+                                + inboundReader.intValue("destroyedUserId"));
+                        break;
+                    default:
+                        break;
+                }
             }
         } catch (IllegalArgumentException ignored) {
             // The game-state pipeline owns malformed-frame handling; tracing must not affect it.
+        }
+    }
+
+    /** Action confirmations whose fields are useful for a packet-only live diagnosis. */
+    static boolean isTraceableInboundAction(String name) {
+        switch (name) {
+            case "RemoveCollectableCommand":
+            case "CollectionBeamStartCommand":
+            case "CollectionBeamStopCommand":
+            case "AttackLaserRunCommand":
+            case "AttackAbortLaserCommand":
+            case "AttackHitCommand":
+            case "AttackHitNoLockCommand":
+            case "ShipDestroyedCommand":
+                return true;
+            default:
+                return false;
         }
     }
 
