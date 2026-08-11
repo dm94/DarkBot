@@ -12,6 +12,7 @@ import com.github.manolo8.darkbot.core.BotInstaller;
 import com.github.manolo8.darkbot.core.IDarkBotAPI;
 import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.api.InvalidNativeSignature;
+import com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter;
 import com.github.manolo8.darkbot.core.manager.EffectManager;
 import com.github.manolo8.darkbot.core.manager.FacadeManager;
 import com.github.manolo8.darkbot.core.manager.GuiManager;
@@ -262,6 +263,11 @@ public class Main extends Thread implements PluginListener, BotAPI {
     }
 
     private void validTick() {
+        if (API instanceof UnityPacketAdapter) {
+            validUnityTick((UnityPacketAdapter) API);
+            return;
+        }
+
         settingsManager.tick();
         hero.tick();
         mapManager.tick();
@@ -281,6 +287,17 @@ public class Main extends Thread implements PluginListener, BotAPI {
             hero.setLocalTarget(hero.getTargetAs(Lockable.class));
 
         pingManager.tick();
+    }
+
+    /**
+     * Packet sessions already update their managers from decoded frames. Ticking the native
+     * memory managers here would read the NoOp memory (and make the native GUI gate report
+     * "not loaded"), so the normal module loop must be driven by the packet adapter itself.
+     */
+    private void validUnityTick(UnityPacketAdapter unity) {
+        API.tick();
+        tickingModule = running && unity.canTickModule();
+        tickLogic(tickingModule);
     }
 
     private void tickRunning() {

@@ -22,6 +22,8 @@ import eu.darkbot.api.managers.OreAPI;
 import eu.darkbot.api.managers.RepairAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
 import eu.darkbot.api.managers.StatsAPI;
+import eu.darkbot.unity.codec.PacketDef;
+import eu.darkbot.unity.codec.PacketFieldReader;
 import eu.darkbot.unity.codec.PacketRegistry;
 import eu.darkbot.unity.game.EntitiesManager;
 import eu.darkbot.unity.game.EventBroker;
@@ -32,6 +34,7 @@ import eu.darkbot.unity.game.RepairManager;
 import eu.darkbot.unity.game.StarSystemManager;
 import eu.darkbot.unity.game.StatsManager;
 import eu.darkbot.unity.game.UnityGameState;
+import eu.darkbot.unity.net.FrameListener;
 import eu.darkbot.unity.net.PacketSender;
 import eu.darkbot.unity.session.BigPointPortalHandler;
 import eu.darkbot.unity.session.GameConnection;
@@ -103,6 +106,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
 
     private volatile SessionConnector connector;
     private volatile UnityGameState game;
+    private volatile PacketFieldReader inboundReader;
     private volatile boolean traceOutbound;
     private volatile boolean diagnosticMove;
     private volatile int diagnosticMoveDistance;
@@ -199,6 +203,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load the unity packets.json dictionary", e);
         }
+        this.inboundReader = new PacketFieldReader(registry);
         EventBroker eventBroker = new EventBroker();
         StarSystemManager starSystem = new StarSystemManager();
         HeroManager hero = new HeroManager(0, starSystem, eventBroker);
@@ -235,6 +240,19 @@ public class UnityPacketAdapter extends GameAPIImpl<
         GameConnection conn = c.connection();
         UnityGameState g = game;
         return conn != null && conn.state().isMapActive() && g != null && g.getHero().isValid();
+    }
+
+    /**
+     * Whether the normal DarkBot module loop may run. The legacy GUI manager checks native
+     * memory addresses and therefore always reports false for packet sessions; using it here
+     * would leave the bot connected but permanently stopped after READY.
+     */
+    public boolean canTickModule() {
+        return canTickModule(isSessionReady(), game.getRepair().isDestroyed());
+    }
+
+    static boolean canTickModule(boolean sessionReady, boolean destroyed) {
+        return sessionReady && !destroyed;
     }
 
     /**
@@ -468,7 +486,14 @@ public class UnityPacketAdapter extends GameAPIImpl<
 
         // The connector relays every server→client frame into the game-state pipeline;
         // UnityGameState learns the hero id itself (first ShipInitializationCommand).
-        SessionConnector c = new SessionConnector(http, maps, provider, statusListener(), g);
+        FrameListener listener = g;
+        if (traceOutbound) {
+            listener = (clientToServer, payload) -> {
+                if (!clientToServer) traceInboundMovement(payload);
+                g.onFrame(clientToServer, payload);
+            };
+        }
+        SessionConnector c = new SessionConnector(http, maps, provider, statusListener(), listener);
         c.setLoginMethod(method);
         c.start();
         this.connector = c;
@@ -482,7 +507,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
             }
             try {
                 conn.send(packet);
-                if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " sent");
+                if (traceOutbound) {
+                    String details = "MoveRequest".equals(packet.name()) ? " " + packet.values() : "";
+                    System.out.println("[unity-c2s] " + packet.name() + details + " sent");
+                }
                 return true;
             } catch (IOException e) {
                 if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " failed: " + e.getMessage());
@@ -499,6 +527,24 @@ public class UnityPacketAdapter extends GameAPIImpl<
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Logs the server-side movement acknowledgement without dumping unrelated packet data. */
+    private void traceInboundMovement(byte[] payload) {
+        try {
+            PacketDef def = inboundReader.read(payload);
+            String name = def.name();
+            if ("MoveCommand".equals(name)) {
+                System.out.println("[unity-s2c] MoveCommand userId=" + inboundReader.intValue("userId")
+                        + " x=" + inboundReader.intValue("x") + " y=" + inboundReader.intValue("y")
+                        + " timeToTarget=" + inboundReader.intValue("timeToTarget"));
+            } else if ("HeroMoveCommand".equals(name)) {
+                System.out.println("[unity-s2c] HeroMoveCommand x=" + inboundReader.intValue("x")
+                        + " y=" + inboundReader.intValue("y"));
+            }
+        } catch (IllegalArgumentException ignored) {
+            // The game-state pipeline owns malformed-frame handling; tracing must not affect it.
         }
     }
 
