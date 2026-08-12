@@ -1,6 +1,7 @@
 package com.github.manolo8.darkbot.core.api.adapters;
 
 import com.github.manolo8.darkbot.Main;
+import com.github.manolo8.darkbot.config.ConfigEntity;
 import com.github.manolo8.darkbot.core.BotInstaller;
 import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.api.GameAPI;
@@ -226,6 +227,12 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
         HeroManager hero = new HeroManager(0, starSystem, eventBroker);
         EntitiesManager entities = new EntitiesManager(eventBroker);
+        // The shared Unity modules use the public BoxInfo/NpcInfo contracts, but the packet
+        // module cannot depend on DarkBot's concrete ConfigEntity. Resolve every live entity
+        // through the active profile so collect/kill flags are applied before a module can act.
+        entities.setConfigResolvers(
+                name -> ConfigEntity.INSTANCE.getOrCreateBoxInfo(name),
+                name -> ConfigEntity.INSTANCE.getOrCreateNpcInfo(name));
         StatsManager stats = new StatsManager(eventBroker);
         OreManager ores = new OreManager();
         InventoryManager inventory = new InventoryManager(ores);
