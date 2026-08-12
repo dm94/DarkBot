@@ -2,6 +2,7 @@ package com.github.manolo8.darkbot.core.api.adapters;
 
 import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.core.BotInstaller;
+import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.api.GameAPI;
 import com.github.manolo8.darkbot.core.api.GameAPIImpl;
 import com.github.manolo8.darkbot.core.entities.Box;
@@ -157,7 +158,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 new NoOpMemory(),
                 new NoOpExtraMemoryReader(),
                 new NoOpInteraction(),
-                new UnityDirectInteraction());
+                new UnityDirectInteraction(),
+                Capability.DIRECT_MOVE_SHIP);
 
         // Wire the components that need the adapter instance. They are static (so they can be
         // constructed in the super() call) and lazily read this reference; their callbacks only
@@ -247,6 +249,16 @@ public class UnityPacketAdapter extends GameAPIImpl<
         if (g != null && isSessionReady()) {
             g.getMovement().moveTo(destination.getX(), destination.getY());
         }
+    }
+
+    /**
+     * Unity has no Flash map event manager, so GameAPIImpl's legacy mapClick gate would
+     * reject every movement before reaching DirectInteraction. Route direct movement
+     * straight to the packet manager instead of requiring a minimap click.
+     */
+    @Override
+    public void moveShip(Locatable destination) {
+        moveShipUnity(destination);
     }
 
     /** True when the map session is live and the hero snapshot has arrived. */

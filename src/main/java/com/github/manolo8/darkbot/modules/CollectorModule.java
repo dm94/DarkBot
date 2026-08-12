@@ -100,6 +100,20 @@ public class CollectorModule implements Module {
     }
 
     private boolean checkMap() {
+        if (Main.API instanceof com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter) {
+            eu.darkbot.api.managers.HeroAPI packetHero = main.pluginAPI.requireAPI(eu.darkbot.api.managers.HeroAPI.class);
+            eu.darkbot.api.managers.EntitiesAPI packetEntities = main.pluginAPI.requireAPI(eu.darkbot.api.managers.EntitiesAPI.class);
+            if (config.GENERAL.WORKING_MAP != packetHero.getMap().getId()
+                    && !packetEntities.getPortals().isEmpty()) {
+                eu.darkbot.shared.modules.MapModule travel =
+                        new eu.darkbot.shared.modules.MapModule(main.pluginAPI, false);
+                travel.setTarget(main.pluginAPI.requireAPI(eu.darkbot.api.managers.StarSystemAPI.class)
+                        .getOrCreateMap(config.GENERAL.WORKING_MAP));
+                main.setModule(travel);
+                return false;
+            }
+            return true;
+        }
         if (this.config.GENERAL.WORKING_MAP != this.hero.map.id && !main.mapManager.entities.portals.isEmpty()) {
             this.main.setModule(new MapModule())
                     .setTarget(this.main.starManager.byId(this.main.config.GENERAL.WORKING_MAP));
