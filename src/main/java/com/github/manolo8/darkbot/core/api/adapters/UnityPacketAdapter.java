@@ -615,6 +615,14 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 System.out.println("[unity-s2c] ShipInitializationCommand cargoFree="
                         + inboundReader.intValue("cargoSpace") + " cargoMax="
                         + inboundReader.intValue("cargoSpaceMax"));
+            } else if ("LegacyModule".equals(name)) {
+                // Unity currently delivers rewards through this legacy text envelope. Keep
+                // only stat messages in the trace; the map also emits thousands of unrelated
+                // legacy UI/settings updates during a session.
+                String message = inboundReader.stringValue("message");
+                if (message != null && message.startsWith("0|LM|ST|")) {
+                    System.out.println("[unity-s2c] LegacyModule reward=" + message);
+                }
             } else if ("AttributeSpaceUpdateCommand".equals(name)) {
                 System.out.println("[unity-s2c] AttributeSpaceUpdateCommand spaceType="
                         + inboundReader.intValue("spaceType") + " spaceLeft="
