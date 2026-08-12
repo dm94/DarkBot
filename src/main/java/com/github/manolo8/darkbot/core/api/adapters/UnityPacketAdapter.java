@@ -22,6 +22,7 @@ import eu.darkbot.api.managers.HeroAPI;
 import eu.darkbot.api.managers.InventoryAPI;
 import eu.darkbot.api.managers.MovementAPI;
 import eu.darkbot.api.managers.OreAPI;
+import eu.darkbot.api.managers.PetAPI;
 import eu.darkbot.api.managers.RepairAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
 import eu.darkbot.api.managers.StatsAPI;
@@ -244,10 +245,15 @@ public class UnityPacketAdapter extends GameAPIImpl<
         RepairManager repair = new RepairManager();
         this.game = new UnityGameState(registry, eventBroker, starSystem, hero, entities, 0,
                 stats, repair, ores, inventory);
+        // Pet (U-013): the packet PetManager reads the DarkBot PET config (enabled gate +
+        // configured gear) and falls back to it after a module gear override expires.
+        game.getPet().setConfig(
+                () -> Main.INSTANCE.config.PET.ENABLED,
+                () -> Main.INSTANCE.config.PET.MODULE_ID);
 
         Main.INSTANCE.pluginAPI.registerUnityManagers(eventBroker,
                 eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
-                game.getMovement(), game.getAttack());
+                game.getMovement(), game.getAttack(), game.getPet());
     }
 
     @Override
@@ -327,6 +333,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
         if (api == InventoryAPI.class) return (T) g.getInventory();
         if (api == MovementAPI.class) return (T) g.getMovement();
         if (api == AttackAPI.class) return (T) g.getAttack();
+        if (api == PetAPI.class) return (T) g.getPet();
         return null;
     }
 
@@ -596,6 +603,14 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 tickUnityRepair(g, c, nextUnityReviveAt);
                 if (g.getRepair().isDestroyed()) nextUnityReviveAt = System.currentTimeMillis() + 10_000;
                 else nextUnityReviveAt = 0;
+                // The memory PetManager's GUI tick never runs in Unity mode (Main drives
+                // tickLogic directly), so forward the module's intent (setEnabled/setGear
+                // calls on guiManager.pet) to the packet pet manager and let it act.
+                com.github.manolo8.darkbot.core.manager.PetManager memoryPet =
+                        Main.INSTANCE.guiManager.pet;
+                g.getPet().setEnabled(memoryPet.isEnabled());
+                g.getPet().setOverride(memoryPet.getGearOverride());
+                g.getPet().tick();
                 botInstaller.invalid.send(!isSessionReady());
                 if (traceOutbound && System.currentTimeMillis() >= nextMetricsLog) {
                     System.out.println("[unity-metrics] " + g.getActionMetrics().status());
