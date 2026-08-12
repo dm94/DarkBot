@@ -560,17 +560,28 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     System.out.println("[unity-c2s] " + mode + packet.name() + details + " sent");
                 }
                 return true;
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
                 if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " failed: " + e.getMessage());
                 return false;
             }
+        });
+        // KillScreenRepairRequest contains the same LoginRequest module as the current
+        // connection. Binding it here is essential: sending a null nested module is rejected
+        // by PacketWriter and the Unity server ignores a repair without the session identity.
+        g.getRepair().setLoginRequestSupplier(() -> {
+            GameConnection connection = c.connection();
+            return connection == null ? null : connection.toLoginRequest();
         });
 
         if (diagnosticMove) startDiagnosticMove(c, g);
 
         long nextMetricsLog = System.currentTimeMillis() + 10_000;
+        long nextUnityReviveAt = 0;
         try {
             while (true) {
+                tickUnityRepair(g, c, nextUnityReviveAt);
+                if (g.getRepair().isDestroyed()) nextUnityReviveAt = System.currentTimeMillis() + 10_000;
+                else nextUnityReviveAt = 0;
                 botInstaller.invalid.send(!isSessionReady());
                 if (traceOutbound && System.currentTimeMillis() >= nextMetricsLog) {
                     System.out.println("[unity-metrics] " + g.getActionMetrics().status());
@@ -580,6 +591,34 @@ public class UnityPacketAdapter extends GameAPIImpl<
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Runs the packet equivalent of GuiManager's death/revive branch. Unity deliberately skips
+     * the native GUI tick, so without this worker-side path a detected kill screen would remain
+     * destroyed forever and no KillScreenRepairRequest would be sent.
+     */
+    private void tickUnityRepair(UnityGameState g, SessionConnector c, long nextAttemptAt) {
+        if (!g.getRepair().isDestroyed() || System.currentTimeMillis() < nextAttemptAt) return;
+        GameConnection connection = c.connection();
+        if (connection == null || !connection.state().isMapActive()) return;
+
+        long waitMs = Math.max(0, Main.INSTANCE.config.GENERAL.SAFETY.WAIT_BEFORE_REVIVE * 1000L);
+        java.time.Instant death = g.getRepair().getLastDeathTime();
+        if (death != null) {
+            long elapsed = java.time.Duration.between(death, java.time.Instant.now()).toMillis();
+            if (elapsed < waitMs) return;
+        }
+
+        com.github.manolo8.darkbot.config.types.suppliers.ReviveLocation configured =
+                Main.INSTANCE.config.GENERAL.SAFETY.REVIVE;
+        eu.darkbot.api.game.enums.ReviveLocation location =
+                eu.darkbot.api.game.enums.ReviveLocation.valueOf(configured.name());
+        boolean sent = g.getRepair().revive(location);
+        if (traceOutbound || sent) {
+            System.out.println("[unity] " + (sent ? "KillScreenRepairRequest sent" :
+                    "KillScreenRepairRequest not sent") + " location=" + location);
         }
     }
 
@@ -612,7 +651,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
                         + inboundReader.values().get("hitpointsMax") + " shield="
                         + inboundReader.intValue("shield"));
             } else if ("ShipInitializationCommand".equals(name)) {
-                System.out.println("[unity-s2c] ShipInitializationCommand cargoFree="
+                System.out.println("[unity-s2c] ShipInitializationCommand userId="
+                        + inboundReader.intValue("userId") + " cargoFree="
                         + inboundReader.intValue("cargoSpace") + " cargoMax="
                         + inboundReader.intValue("cargoSpaceMax"));
             } else if ("LegacyModule".equals(name)) {
