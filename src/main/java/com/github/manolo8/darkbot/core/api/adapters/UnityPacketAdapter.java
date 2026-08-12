@@ -671,6 +671,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
                         System.out.println("[unity-s2c] ShipDestroyedCommand destroyedUserId="
                                 + inboundReader.intValue("destroyedUserId"));
                         break;
+                    case "KillScreenPostCommand":
+                        System.out.println("[unity-s2c] KillScreenPostCommand killer="
+                                + inboundReader.stringValue("killerName"));
+                        break;
                     default:
                         break;
                 }
@@ -694,6 +698,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
             case "AttackHitCommand":
             case "AttackHitNoLockCommand":
             case "ShipDestroyedCommand":
+            case "KillScreenPostCommand":
                 return true;
             default:
                 return false;
