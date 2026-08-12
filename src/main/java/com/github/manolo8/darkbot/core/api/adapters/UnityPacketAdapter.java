@@ -232,6 +232,12 @@ public class UnityPacketAdapter extends GameAPIImpl<
         entities.setConfigResolvers(
                 name -> ConfigEntity.INSTANCE.getOrCreateBoxInfo(name),
                 name -> ConfigEntity.INSTANCE.getOrCreateNpcInfo(name));
+        // Obstacle semantics (Fase 5): AVOID_MINES gates mine avoidance, AVOID_CBS gates
+        // enemy battle-station modules; the hero faction decides which CBS are enemies.
+        entities.setAvoidFlags(
+                () -> Main.INSTANCE.config.MISCELLANEOUS.AVOID_MINES,
+                () -> Main.INSTANCE.config.MISCELLANEOUS.AVOID_CBS);
+        entities.setHeroFaction(() -> hero.entityInfo().getFaction());
         StatsManager stats = new StatsManager(eventBroker);
         OreManager ores = new OreManager();
         InventoryManager inventory = new InventoryManager(ores);
