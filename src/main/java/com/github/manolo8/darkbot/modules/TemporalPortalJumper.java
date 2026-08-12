@@ -39,7 +39,12 @@ public class TemporalPortalJumper extends TemporalModule {
 
     @Override
     public void onTickModule() {
-        if (main.hero.drive.movementInterrupted(500) || !target.isValid()) {
+        // The Flash map panel records a recent click in Drive. Unity's packet-backed
+        // portal selection comes from the live EntitiesAPI instead, so the native
+        // movement-interruption flag is not meaningful there.
+        boolean interrupted = !(Main.API instanceof com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter)
+                && main.hero.drive.movementInterrupted(500);
+        if (interrupted || !target.isValid()) {
             goBack();
         } else portalJumper.travelAndJump(target);
     }

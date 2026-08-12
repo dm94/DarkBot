@@ -7,6 +7,7 @@ import com.github.manolo8.darkbot.config.types.suppliers.DisplayFlag;
 import com.github.manolo8.darkbot.extensions.features.handlers.DrawableHandler;
 import com.github.manolo8.darkbot.gui.titlebar.RefreshButton;
 import com.github.manolo8.darkbot.modules.TemporalPortalJumper;
+import com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter;
 import eu.darkbot.api.config.ConfigSetting;
 import eu.darkbot.api.extensions.Drawable;
 import eu.darkbot.api.extensions.MapGraphics;
@@ -16,6 +17,7 @@ import eu.darkbot.api.game.other.GameMap;
 import eu.darkbot.api.game.other.Locatable;
 import eu.darkbot.api.game.other.Point;
 import eu.darkbot.api.managers.ConfigAPI;
+import eu.darkbot.api.managers.EntitiesAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
 import lombok.Getter;
 import net.miginfocom.swing.MigLayout;
@@ -109,7 +111,11 @@ public class MapDrawer extends JPanel {
                     if (SwingUtilities.isRightMouseButton(e)) {
                         List<? extends Portal> portals;
                         synchronized (Main.UPDATE_LOCKER) {
-                             portals = main.mapManager.entities.getPortals().stream()
+                            java.util.Collection<? extends Portal> available =
+                                    Main.API instanceof UnityPacketAdapter
+                                            ? main.pluginAPI.requireAPI(EntitiesAPI.class).getPortals()
+                                            : main.mapManager.entities.getPortals();
+                            portals = available.stream()
                                     .filter(p -> p.distanceTo(loc) < 1000)
                                     .collect(Collectors.toList());
                         }
@@ -135,7 +141,7 @@ public class MapDrawer extends JPanel {
                             portalMenu.show(MapDrawer.this, e.getX(), e.getY());
                         }
                     } else {
-                        main.hero.drive.move(loc);
+                        moveFromMapInterface(loc);
                         lastMapClick = System.currentTimeMillis();
                     }
                 }
@@ -148,7 +154,7 @@ public class MapDrawer extends JPanel {
                 if ((main.config.BOT_SETTINGS.MAP_DISPLAY.MAP_START_STOP && SwingUtilities.isLeftMouseButton(e))
                         || SwingUtilities.isRightMouseButton(e)) return;
 
-                main.hero.drive.move(mapGraphics.toGameLocation(e));
+                moveFromMapInterface(mapGraphics.toGameLocation(e));
                 lastMapClick = System.currentTimeMillis();
             }
         });
@@ -160,6 +166,19 @@ public class MapDrawer extends JPanel {
     public void setup(Main main) {
         this.main = main;
         this.mapGraphics = main.pluginAPI.requireInstance(MapGraphicsImpl.class);
+    }
+
+    /**
+     * The legacy map panel feeds {@link com.github.manolo8.darkbot.core.utils.Drive}, whose
+     * A* loop is driven by the Flash hero tick. Unity deliberately skips that native tick,
+     * so a click/drag would only store a destination and never emit a packet. In packet mode
+     * the map panel is a direct movement input: the Unity manager serializes the same
+     * {@code MoveRequest} used by the rest of the bot. Flash keeps the original pathfinder.
+     */
+    private void moveFromMapInterface(Locatable location) {
+        if (Main.API instanceof UnityPacketAdapter)
+            ((UnityPacketAdapter) Main.API).moveShipFromMapInterface(location);
+        else main.hero.drive.move(location);
     }
 
     protected void onPaint() {

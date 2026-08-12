@@ -3,6 +3,7 @@ package com.github.manolo8.darkbot.core.utils;
 import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.config.ZoneInfo;
 import com.github.manolo8.darkbot.core.api.Capability;
+import com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter;
 import com.github.manolo8.darkbot.core.entities.Entity;
 import com.github.manolo8.darkbot.core.manager.MapManager;
 import com.github.manolo8.darkbot.core.manager.MouseManager;
@@ -50,6 +51,9 @@ public class Drive implements MovementAPI {
     }
 
     public void checkMove() {
+        // The Unity adapter owns movement state and receives authoritative positions from
+        // packets; the native Flash pathfinder has no valid map/hero memory to update here.
+        if (unityMovement() != null) return;
         this.heroLoc = main.hero.locationInfo;
 
         // Pathfinder changed and bot is already traveling, re-create route
@@ -123,7 +127,9 @@ public class Drive implements MovementAPI {
     }
 
     public boolean canMove(Location location) {
-        return !map.isOutOfMap(location.x, location.y) && pathFinder.canMove(location.x, location.y);
+        MovementAPI movement = unityMovement();
+        return movement != null ? movement.canMove(location.x, location.y)
+                : !map.isOutOfMap(location.x, location.y) && pathFinder.canMove(location.x, location.y);
     }
 
     @Deprecated /* Use getClosestDistance(Location) instead */
@@ -142,6 +148,11 @@ public class Drive implements MovementAPI {
 
     @Override
     public void stop(boolean current) {
+        MovementAPI movement = unityMovement();
+        if (movement != null) {
+            movement.stop(current);
+            return;
+        }
         if (heroLoc.isMoving() && current) {
             Location stopLoc = heroLoc.now.copy();
             stopLoc.toAngle(heroLoc.now, heroLoc.last.angle(heroLoc.now), 100);
@@ -172,6 +183,14 @@ public class Drive implements MovementAPI {
     }
 
     public void move(double x, double y) {
+        MovementAPI movement = unityMovement();
+        if (movement != null) {
+            // Packet mode has no Flash minimap event manager or native A* tick. The map
+            // server accepts absolute destinations, so the packet movement manager is the
+            // long-distance planner and applies its own rate limit/prediction.
+            movement.moveTo(x, y);
+            return;
+        }
         Location newDir = new Location(x, y);
         if (movingTo().distance(newDir) > 10) tempDest = endLoc = newDir;
     }
@@ -182,6 +201,11 @@ public class Drive implements MovementAPI {
 
     @Override
     public void moveRandom() {
+        MovementAPI movement = unityMovement();
+        if (movement != null) {
+            movement.moveRandom();
+            return;
+        }
         ZoneInfo area = map.preferred;
         boolean sequential = main.config.GENERAL.ROAMING.SEQUENTIAL;
 
@@ -215,26 +239,33 @@ public class Drive implements MovementAPI {
 
     @Override
     public boolean isMoving() {
-        return !paths.isEmpty() || heroLoc.isMoving();
+        MovementAPI movement = unityMovement();
+        return movement != null ? movement.isMoving() : !paths.isEmpty() || heroLoc.isMoving();
     }
 
     @Override
     public boolean isMoving(long inTime) {
-        return lastMoved + inTime >= System.currentTimeMillis();
+        MovementAPI movement = unityMovement();
+        return movement != null ? movement.isMoving(inTime) : lastMoved + inTime >= System.currentTimeMillis();
     }
 
     public Location movingTo() {
+        MovementAPI movement = unityMovement();
+        if (movement != null) return copyOf(movement.getDestination());
         return endLoc == null ? heroLoc.now.copy() : endLoc.copy();
     }
 
     @Override
     public boolean isOutOfMap() {
-        return map.isOutOfMap(heroLoc.now.x, heroLoc.now.y);
+        MovementAPI movement = unityMovement();
+        return movement != null ? movement.isOutOfMap() : map.isOutOfMap(heroLoc.now.x, heroLoc.now.y);
     }
 
     @Override
     public void jumpPortal(@NotNull Portal portal) {
-        main.hero.jumpPortal(portal);
+        MovementAPI movement = unityMovement();
+        if (movement != null) movement.jumpPortal(portal);
+        else main.hero.jumpPortal(portal);
     }
 
     @Override
@@ -244,17 +275,21 @@ public class Drive implements MovementAPI {
 
     @Override
     public Location getCurrentLocation() {
-        return heroLoc.now;
+        MovementAPI movement = unityMovement();
+        return movement != null ? copyOf(movement.getCurrentLocation()) : heroLoc.now;
     }
 
     @Override
     public @NotNull List<? extends Locatable> getPath() {
-        return Collections.unmodifiableList(paths);
+        MovementAPI movement = unityMovement();
+        return movement != null ? movement.getPath() : Collections.unmodifiableList(paths);
     }
 
     @Override
     public boolean canMove(double x, double y) {
-        return !map.isOutOfMap(x, y) && pathFinder.canMove((int) x, (int) y);
+        MovementAPI movement = unityMovement();
+        return movement != null ? movement.canMove(x, y)
+                : !map.isOutOfMap(x, y) && pathFinder.canMove((int) x, (int) y);
     }
 
     @Override
@@ -264,12 +299,16 @@ public class Drive implements MovementAPI {
 
     @Override
     public double getClosestDistance(double x, double y) {
+        MovementAPI movement = unityMovement();
+        if (movement != null) return movement.getClosestDistance(x, y);
         Locatable from = Locatable.of(x, y);
         return from.distanceTo(pathFinder.fixToClosest(from));
     }
 
     @Override
     public double getDistanceBetween(double x, double y, double ox, double oy) {
+        MovementAPI movement = unityMovement();
+        if (movement != null) return movement.getDistanceBetween(x, y, ox, oy);
         Locatable previous = Locatable.of(x, y);
         LinkedList<Locatable> path = pathFinder.createRote(previous, Locatable.of(ox, oy));
         double sum = 0;
@@ -282,7 +321,17 @@ public class Drive implements MovementAPI {
 
     @Override
     public boolean isInPreferredZone(Locatable locatable) {
-        return map.preferred.contains(locatable);
+        MovementAPI movement = unityMovement();
+        return movement != null || map.preferred.contains(locatable);
+    }
+
+    private MovementAPI unityMovement() {
+        return Main.API instanceof UnityPacketAdapter
+                ? main.pluginAPI.requireAPI(MovementAPI.class) : null;
+    }
+
+    private static Location copyOf(eu.darkbot.api.game.other.Location location) {
+        return new Location(location.getX(), location.getY());
     }
 
     public boolean movementInterrupted(long inTime) {

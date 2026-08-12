@@ -251,6 +251,14 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
     }
 
+    /** Route a click/drag from DarkBot's map interface without entering the Flash Drive loop. */
+    public void moveShipFromMapInterface(Locatable destination) {
+        UnityGameState g = game;
+        if (g != null && isSessionReady()) {
+            g.getMovement().moveToFromMapInterface(destination.getX(), destination.getY());
+        }
+    }
+
     /**
      * Unity has no Flash map event manager, so GameAPIImpl's legacy mapClick gate would
      * reject every movement before reaching DirectInteraction. Route direct movement
@@ -539,8 +547,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 conn.send(packet);
                 g.onOutbound(packet);
                 if (traceOutbound) {
+                    String mode = ("MoveRequest".equals(packet.name()) || "JumpRequest".equals(packet.name()))
+                            ? "[" + g.getMovement().getLastActionMode().name().toLowerCase() + "] " : "";
                     String details = "MoveRequest".equals(packet.name()) ? " " + packet.values() : "";
-                    System.out.println("[unity-c2s] " + packet.name() + details + " sent");
+                    System.out.println("[unity-c2s] " + mode + packet.name() + details + " sent");
                 }
                 return true;
             } catch (IOException e) {
@@ -578,6 +588,11 @@ public class UnityPacketAdapter extends GameAPIImpl<
             } else if ("HeroMoveCommand".equals(name)) {
                 System.out.println("[unity-s2c] HeroMoveCommand x=" + inboundReader.intValue("x")
                         + " y=" + inboundReader.intValue("y"));
+            } else if ("BeaconCommand".equals(name)) {
+                System.out.println("[unity-s2c] BeaconCommand x=" + inboundReader.intValue("positionX")
+                        + " y=" + inboundReader.intValue("positionY") + " aheadX="
+                        + inboundReader.intValue("positionAheadX") + " aheadY="
+                        + inboundReader.intValue("positionAheadY"));
             } else if ("HitpointInfoCommand".equals(name)) {
                 System.out.println("[unity-s2c] HitpointInfoCommand hp="
                         + inboundReader.values().get("hitpoints") + " hpMax="
