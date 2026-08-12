@@ -9,10 +9,9 @@ import com.github.manolo8.darkbot.core.api.GameAPIImpl;
 import com.github.manolo8.darkbot.core.entities.Box;
 import com.github.manolo8.darkbot.core.manager.StarManager;
 import com.github.manolo8.darkbot.core.entities.Entity;
-import com.github.manolo8.darkbot.gui.login.UnityLoginForm;
-import com.github.manolo8.darkbot.gui.utils.Popups;
 import com.github.manolo8.darkbot.utils.StartupParams;
-import com.github.manolo8.darkbot.utils.login.UnityCredentials;
+import com.github.manolo8.darkbot.utils.login.LoginData;
+import com.github.manolo8.darkbot.utils.login.LoginUtils;
 import eu.darkbot.api.API;
 import eu.darkbot.api.game.other.GameMap;
 import eu.darkbot.api.game.other.Locatable;
@@ -56,7 +55,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.function.LongPredicate;
 
-import javax.swing.BorderFactory;
 
 /**
  * Packet-based API adapter (Camino A, Fase 4): runs the bot against the official Unity
@@ -84,8 +82,9 @@ import javax.swing.BorderFactory;
  * ({@link BigPointPortalHandler}); {@code server+sid}  saved portal-cookie exchange;
  * or {@code gameSid+server+userId+instance}  direct restore of a raw gameserver SID
  * captured from the Unity client's LoginRequest (bypassing the portal/WAF). When no
- * {@code -login} file is supplied, credentials are collected from the {@link UnityLoginForm}
- * popup (portal credentials or a saved dosid). Without either, the adapter stays invalid and
+ * {@code -login} file is supplied, credentials are collected from the standard
+ * {@code LoginForm} popup (portal credentials or a saved dosid). Without either, the adapter
+ * stays invalid and
  * logs the reason.
  */
 public class UnityPacketAdapter extends GameAPIImpl<
@@ -437,8 +436,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
 
     /**
      * Resolves the Unity session credentials: from the {@code -login} properties file when
-     * provided (headless/scripted runs), otherwise from the {@link UnityLoginForm} popup
-     * shown on the EDT (lets the user pick between portal login and a saved dosid session).
+     * provided (headless/scripted runs), otherwise from the standard Flash login form shown
+     * on the EDT. The selected adapter then decides whether those credentials feed the Flash
+     * client or the Unity packet session.
      *
      * @return the resolved portal/direct-session input, or {@code null} if the user dismissed
      *         the dialog without providing credentials
@@ -480,20 +480,28 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     parseInt(props.getDiagnosticMoveDistance(), 200));
         }
 
-        UnityLoginForm form = new UnityLoginForm();
-        Popups.of("Unity Login", form)
-                .options()
-                .border(BorderFactory.createEmptyBorder(0, 0, 5, 0))
-                .defaultButton(form.getLoginBtn())
-                .showSync();
-
-        UnityCredentials creds = form.getResult();
-        if (creds == null) {
-            System.out.println("[unity] Unity login dialog was dismissed without logging in");
+        LoginData login = LoginUtils.performUserLogin(params, true);
+        if (login == null) {
+            System.out.println("[unity] Login dialog was dismissed without logging in");
             return null;
         }
-        return new SessionInput(creds.server, creds.username, creds.password, creds.sid,
-                null, 0, null, false, MAP_ID, false, false, 200);
+
+        return new SessionInput(serverFromUrl(login.getUrl()), login.getUsername(),
+                login.getPassword(), login.getSid(), null, 0, null, false,
+                MAP_ID, false, false, 200);
+    }
+
+    /** Converts the Flash login form's saved universe URL to the maps/session server name. */
+    private static String serverFromUrl(String url) {
+        if (url == null || url.trim().isEmpty()) return null;
+        String server = url.trim().toLowerCase();
+        int scheme = server.indexOf("://");
+        if (scheme >= 0) server = server.substring(scheme + 3);
+        int slash = server.indexOf('/');
+        if (slash >= 0) server = server.substring(0, slash);
+        if (server.endsWith(".darkorbit.com"))
+            server = server.substring(0, server.length() - ".darkorbit.com".length());
+        return server.isEmpty() ? null : server;
     }
 
     private static String first(String value, String fallback, String defaultValue) {

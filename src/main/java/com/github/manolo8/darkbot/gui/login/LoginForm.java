@@ -19,9 +19,19 @@ public class LoginForm extends JPanel {
     private final JButton loginBtn = new JButton(I18n.get("gui.login.log_in.button"));
 
     private final LoginData loginData = new LoginData();
+    private final boolean packetMode;
 
     public LoginForm() {
+        this(false);
+    }
+
+    /**
+     * Creates the standard login form. In packet mode it keeps the same Flash-era UI, but
+     * only collects credentials; the selected packet adapter performs the real connection.
+     */
+    public LoginForm(boolean packetMode) {
         super(new MigLayout("wrap 2, ins 0", "[]10px:push[]", "[]8px[]"));
+        this.packetMode = packetMode;
         tabbedPane.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
 
         tabbedPane.addTab(I18n.get("gui.login.user_pass"), new UserLogin());
@@ -46,6 +56,11 @@ public class LoginForm extends JPanel {
         return loginData;
     }
 
+    /** True when the user completed the form successfully, including packet-mode credentials. */
+    public boolean isSubmitted() {
+        return submitted;
+    }
+
     public void setInfoText(Message val) {
         infoLb.setText(val.text);
         infoLb.setToolTipText(val.description);
@@ -65,6 +80,7 @@ public class LoginForm extends JPanel {
     }
 
     private boolean canLogIn = true;
+    private volatile boolean submitted;
     protected synchronized void startLogin() {
         if (!canLogIn) return;
         loginBtn.setEnabled(canLogIn = false);
@@ -96,17 +112,19 @@ public class LoginForm extends JPanel {
                 loginData.reset();
 
                 publish(new Message(false, I18n.get("gui.login.info.logging_in"), null));
-                Message msg = ((LoginScreen) tabbedPane.getSelectedComponent()).tryLogin(loginData, this::publish);
+                Message msg = ((LoginScreen) tabbedPane.getSelectedComponent())
+                        .tryLogin(loginData, this::publish, packetMode);
                 if (msg != null) {
                     publish(msg);
                     failed = true;
                     return null;
                 }
 
-                if (loginData.isNotInitialized()) {
+                if (loginData.isNotInitialized() && !packetMode) {
                     publish(new Message(false, I18n.get("gui.login.info.loading_spacemap"), null));
                     LoginUtils.findPreloader(loginData);
                 }
+                submitted = true;
                 return loginData;
             } catch (SSLHandshakeException e) {
                 publish(new Message(true, I18n.get("gui.login.error.unsupported_java"),

@@ -12,4 +12,13 @@ public interface LoginScreen {
      * @return null if it went right, message to display otherwise
      */
     LoginForm.Message tryLogin(LoginData login, Consumer<LoginForm.Message> publish);
+
+    /**
+     * Tries the login using the selected transport. Packet-based APIs use the same form but
+     * defer the actual portal/session connection to their session worker.
+     */
+    default LoginForm.Message tryLogin(LoginData login, Consumer<LoginForm.Message> publish,
+                                       boolean packetMode) {
+        return tryLogin(login, publish);
+    }
 }
