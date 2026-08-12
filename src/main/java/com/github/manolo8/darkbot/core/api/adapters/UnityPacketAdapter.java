@@ -5,12 +5,14 @@ import com.github.manolo8.darkbot.core.BotInstaller;
 import com.github.manolo8.darkbot.core.api.GameAPI;
 import com.github.manolo8.darkbot.core.api.GameAPIImpl;
 import com.github.manolo8.darkbot.core.entities.Box;
+import com.github.manolo8.darkbot.core.manager.StarManager;
 import com.github.manolo8.darkbot.core.entities.Entity;
 import com.github.manolo8.darkbot.gui.login.UnityLoginForm;
 import com.github.manolo8.darkbot.gui.utils.Popups;
 import com.github.manolo8.darkbot.utils.StartupParams;
 import com.github.manolo8.darkbot.utils.login.UnityCredentials;
 import eu.darkbot.api.API;
+import eu.darkbot.api.game.other.GameMap;
 import eu.darkbot.api.game.other.Locatable;
 import eu.darkbot.api.managers.AttackAPI;
 import eu.darkbot.api.managers.EntitiesAPI;
@@ -97,9 +99,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
      * {@code version} field (the wire value is the {@code packets.json → meta.versionHash}
      * of the client build, not a "x.y.z" string). When the game updates, the map server
      * rejects the old value with "Version mismatch: server version=X" — copy that X here.
-     * (2026-08-05 update: 1.1.106's 504b1f0c… → 8cf182a3…)
+     * (2026-08-12 update: previous build hash 8cf182a3… → 0994fb6e…, observed from the
+     * live server's VersionCommand after the client update.)
      */
-    public static final String UNITY_CLIENT_VERSION = "8cf182a32819e300e1eb9a70b579d58c";
+    public static final String UNITY_CLIENT_VERSION = "0994fb6ea86f9b16058e2e9284c16608";
     /** Initial map id (portal jumps re-resolve in a later iteration). */
     public static final int MAP_ID = 1;
     /** How often the session state is re-published to {@code BotInstaller.invalid}. */
@@ -207,6 +210,18 @@ public class UnityPacketAdapter extends GameAPIImpl<
         this.inboundReader = new PacketFieldReader(registry);
         EventBroker eventBroker = new EventBroker();
         StarSystemManager starSystem = new StarSystemManager();
+        // The core already owns the authoritative DarkBot map catalog (id, display name,
+        // short name and special-map flags). Reuse it so packet maps keep their wire id while
+        // presenting names such as 3-1 instead of the raw id 9.
+        for (GameMap map : Main.INSTANCE.mapManager.getMaps()) {
+            starSystem.registerMap(map);
+            for (com.github.manolo8.darkbot.core.entities.Portal portal
+                    : StarManager.getInstance().getStaticPortals(map.getId())) {
+                portal.getTargetMap().ifPresent(target -> starSystem.registerPortalRoute(
+                        map.getId(), target.getId(), portal.getSearchType(),
+                        portal.getSearchX(), portal.getSearchY()));
+            }
+        }
         HeroManager hero = new HeroManager(0, starSystem, eventBroker);
         EntitiesManager entities = new EntitiesManager(eventBroker);
         StatsManager stats = new StatsManager(eventBroker);

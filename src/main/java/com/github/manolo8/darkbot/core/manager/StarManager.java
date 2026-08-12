@@ -279,6 +279,11 @@ public class StarManager implements API.Singleton {
         return starSystem.vertexSet();
     }
 
+    /** Static portal definitions used by the packet adapter to resolve dynamic gate ids. */
+    public Collection<Portal> getStaticPortals(int mapId) {
+        return starSystem.outgoingEdgesOf(byId(mapId));
+    }
+
     public Map byId(int id) {
         return starSystem.vertexSet().stream().filter(m -> m.id == id).findAny()
                 .orElseGet(() -> addMap(new Map(id, "Unknown map " + id, false, false)));
