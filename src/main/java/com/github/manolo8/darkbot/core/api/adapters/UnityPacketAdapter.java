@@ -660,6 +660,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 tickUnityRepair(g, c, nextUnityReviveAt);
                 if (g.getRepair().isDestroyed()) nextUnityReviveAt = System.currentTimeMillis() + 10_000;
                 else nextUnityReviveAt = 0;
+                g.getRepair().tryInstantRepair(g.getEntities().getStations(),
+                        g.getHero().getHealth().getHp(), g.getHero().getHealth().getMaxHp(),
+                        Main.INSTANCE.config.GENERAL.SAFETY.INSTANT_REPAIR);
                 // The memory PetManager's GUI tick never runs in Unity mode (Main drives
                 // tickLogic directly), so forward the module's intent (setEnabled/setGear
                 // calls on guiManager.pet) to the packet pet manager and let it act.
