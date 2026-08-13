@@ -9,6 +9,7 @@ import com.github.manolo8.darkbot.core.api.GameAPIImpl;
 import com.github.manolo8.darkbot.core.entities.Box;
 import com.github.manolo8.darkbot.core.manager.StarManager;
 import com.github.manolo8.darkbot.core.entities.Entity;
+import com.github.manolo8.darkbot.core.objects.slotbars.Item;
 import com.github.manolo8.darkbot.extensions.features.handlers.PetGearSelectorHandler;
 import com.github.manolo8.darkbot.utils.StartupParams;
 import com.github.manolo8.darkbot.utils.login.LoginData;
@@ -164,7 +165,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 new NoOpExtraMemoryReader(),
                 new NoOpInteraction(),
                 new UnityDirectInteraction(),
-                Capability.DIRECT_MOVE_SHIP);
+                Capability.DIRECT_MOVE_SHIP,
+                Capability.DIRECT_USE_ITEM);
 
         // Wire the components that need the adapter instance. They are static (so they can be
         // constructed in the super() call) and lazily read this reference; their callbacks only
@@ -299,6 +301,24 @@ public class UnityPacketAdapter extends GameAPIImpl<
     @Override
     public void moveShip(Locatable destination) {
         moveShipUnity(destination);
+    }
+
+    /**
+     * Uses a menu item directly through the packet-backed HeroItemsManager. Unlike the legacy
+     * Flash implementation this does not require the item to have a standard or premium
+     * quick-slot: the server menu id is sufficient (category-bar activation, sourceType=0).
+     */
+    @Override
+    public boolean useItem(Item item) {
+        UnityGameState g = game;
+        if (item == null || item.getId() == null || g == null || !isSessionReady()) return false;
+        return g.getItems().useItemId(item.getId()).isSuccessful();
+    }
+
+    /** The Unity packet path supports direct item activation once the map session is ready. */
+    @Override
+    public boolean isUseItemSupported() {
+        return game != null && isSessionReady();
     }
 
     /** True when the map session is live and the hero snapshot has arrived. */

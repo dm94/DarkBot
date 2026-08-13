@@ -83,6 +83,19 @@ public class SlotBarsProxy extends Updatable implements HeroItemsAPI {
         if (item == null) return ItemUseResult.NOT_AVAILABLE;
 
         ItemUseResult itemUseResult = checkItemFlags(item, itemFlags);
+        if (itemUseResult != null) return itemUseResult;
+
+        // Packet adapters can activate a category-bar item by menuItemId even when the
+        // legacy Flash item has no associated quick-slot. Do not reject that path through
+        // Item.isUsable(), whose memory implementation intentionally requires a shortcut.
+        if (API.isUseItemSupported()) {
+            if (API.useItem(item)) {
+                item.setItemUsed();
+                return ItemUseResult.SUCCESS;
+            }
+            return ItemUseResult.FAILED;
+        }
+
         if (itemUseResult != null || (itemUseResult = checkItemFlags(item, DEFAULT_ITEM_FLAGS)) != null)
             return itemUseResult;
 
