@@ -9,12 +9,14 @@ import com.github.manolo8.darkbot.core.api.GameAPIImpl;
 import com.github.manolo8.darkbot.core.entities.Box;
 import com.github.manolo8.darkbot.core.manager.StarManager;
 import com.github.manolo8.darkbot.core.entities.Entity;
+import com.github.manolo8.darkbot.extensions.features.handlers.PetGearSelectorHandler;
 import com.github.manolo8.darkbot.utils.StartupParams;
 import com.github.manolo8.darkbot.utils.login.LoginData;
 import com.github.manolo8.darkbot.utils.login.LoginUtils;
 import eu.darkbot.api.API;
 import eu.darkbot.api.game.other.GameMap;
 import eu.darkbot.api.game.other.Locatable;
+import eu.darkbot.api.extensions.selectors.PetGearSupplier;
 import eu.darkbot.api.managers.AttackAPI;
 import eu.darkbot.api.managers.EntitiesAPI;
 import eu.darkbot.api.managers.EventBrokerAPI;
@@ -52,6 +54,7 @@ import eu.darkbot.unity.session.SessionIdentity;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.LongPredicate;
@@ -250,6 +253,16 @@ public class UnityPacketAdapter extends GameAPIImpl<
         game.getPet().setConfig(
                 () -> Main.INSTANCE.config.PET.ENABLED,
                 () -> Main.INSTANCE.config.PET.MODULE_ID);
+        // Fuel purchase is part of the PET feature gate: when PET is enabled and the
+        // server reports an empty tank, PetManager sends the rate-limited hotkey request.
+        game.getPet().setAutoBuyFuel(() -> Main.INSTANCE.config.PET.ENABLED);
+        // The native selector already applies plugin priority and PET_LOCATOR/NPC priority
+        // rules. Reuse only that public selector contract; unity-game remains independent of
+        // DarkBot's feature implementation and falls back to the first wire target if the
+        // selector is not ready yet.
+        PetGearSelectorHandler petGearSelector =
+                Main.INSTANCE.pluginAPI.requireInstance(PetGearSelectorHandler.class);
+        game.getPet().setLocatorPicker(picks -> selectLocatorPick(petGearSelector, picks));
 
         Main.INSTANCE.pluginAPI.registerUnityManagers(eventBroker,
                 eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
@@ -534,6 +547,23 @@ public class UnityPacketAdapter extends GameAPIImpl<
     private static boolean parseBooleanInt(String value, boolean fallback) {
         if (value == null || value.trim().isEmpty()) return fallback;
         return "1".equals(value.trim()) || Boolean.parseBoolean(value.trim());
+    }
+
+    /**
+     * Applies the active DarkBot selector to packet locator picks. Kept as a small seam so
+     * selector priority and the reload fallback can be tested without starting a live session.
+     */
+    static PetAPI.LocatorPick selectLocatorPick(PetGearSelectorHandler handler,
+                                                 Collection<? extends PetAPI.LocatorPick> picks) {
+        if (handler == null) return null;
+        try {
+            PetGearSupplier supplier = handler.getBestSupplier();
+            return supplier == null ? null : supplier.getNpcLocatorPick(picks);
+        } catch (RuntimeException ignored) {
+            // Feature reloads can briefly leave the handler without a supplier. Keeping
+            // the first server target is safer than suppressing PetGearActivationRequest.
+            return null;
+        }
     }
 
     /**
