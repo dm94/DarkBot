@@ -39,6 +39,7 @@ import eu.darkbot.unity.codec.PacketRegistry;
 import eu.darkbot.unity.game.EntitiesManager;
 import eu.darkbot.unity.game.EventBroker;
 import eu.darkbot.unity.game.HeroManager;
+import eu.darkbot.unity.game.GroupManager;
 import eu.darkbot.unity.game.InventoryManager;
 import eu.darkbot.unity.game.OreManager;
 import eu.darkbot.unity.game.RepairManager;
@@ -269,6 +270,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
         PetGearSelectorHandler petGearSelector =
                 Main.INSTANCE.pluginAPI.requireInstance(PetGearSelectorHandler.class);
         game.getPet().setLocatorPicker(picks -> selectLocatorPick(petGearSelector, picks));
+        configureGroupAutomation(game.getGroup());
 
         Main.INSTANCE.pluginAPI.registerUnityManagers(eventBroker,
                 eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
@@ -578,6 +580,26 @@ public class UnityPacketAdapter extends GameAPIImpl<
         return "1".equals(value.trim()) || Boolean.parseBoolean(value.trim());
     }
 
+    /** Connects Flash's persisted group policy to the transport-neutral group manager. */
+    private static void configureGroupAutomation(GroupManager group) {
+        GroupManager.Automation policy = new GroupManager.Automation();
+        policy.acceptInvites = () -> Main.INSTANCE.config.GROUP.ACCEPT_INVITES;
+        policy.openInvites = () -> Main.INSTANCE.config.GROUP.OPEN_INVITES;
+        policy.blockInvites = () -> Main.INSTANCE.config.GROUP.BLOCK_INVITES;
+        policy.leaveNoWhitelisted = () -> Main.INSTANCE.config.GROUP.LEAVE_NO_WHITELISTED;
+        policy.whitelistConfigured = () -> Main.INSTANCE.config.GROUP.WHITELIST_TAG != null;
+        policy.whitelist = info -> {
+            eu.darkbot.api.config.types.PlayerTag tag = Main.INSTANCE.config.GROUP.WHITELIST_TAG;
+            return tag == null || tag.hasTag(info);
+        };
+        policy.invite = info -> {
+            eu.darkbot.api.config.types.PlayerTag tag = Main.INSTANCE.config.GROUP.INVITE_TAG;
+            return tag != null && tag.hasTag(info);
+        };
+        policy.knownPlayers = () -> Main.INSTANCE.config.getPlayerInfos();
+        group.setAutomation(policy);
+    }
+
     /**
      * Applies the active DarkBot selector to packet locator picks. Kept as a small seam so
      * selector priority and the reload fallback can be tested without starting a live session.
@@ -673,6 +695,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 g.getPet().setEnabled(memoryPet.isEnabled());
                 g.getPet().setOverride(memoryPet.getGearOverride());
                 g.getPet().tick();
+                // The Flash group manager used its GUI window for these policies. Packet Unity
+                // executes the same safe subset through GroupAPI requests instead.
+                g.getGroup().tickAutomation();
                 botInstaller.invalid.send(!isSessionReady());
                 if (traceOutbound && System.currentTimeMillis() >= nextMetricsLog) {
                     System.out.println("[unity-metrics] " + g.getActionMetrics().status());
