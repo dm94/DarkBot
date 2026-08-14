@@ -255,6 +255,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
         RepairManager repair = new RepairManager();
         this.game = new UnityGameState(registry, eventBroker, starSystem, hero, entities, 0,
                 stats, repair, ores, inventory);
+        game.getMovement().setAvoidRadiation(
+                () -> Main.INSTANCE.config.MISCELLANEOUS.AVOID_RADIATION);
         game.getMovement().setPreferredZonePredicate(location -> {
             GameMap currentMap = game.getStarSystem().getCurrentMap();
             com.github.manolo8.darkbot.config.ZoneInfo preferred =
