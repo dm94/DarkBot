@@ -170,6 +170,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 new NoOpInteraction(),
                 new UnityDirectInteraction(),
                 Capability.DIRECT_MOVE_SHIP,
+                Capability.DIRECT_REFINE,
                 Capability.DIRECT_USE_ITEM);
 
         // Wire the components that need the adapter instance. They are static (so they can be
@@ -1169,6 +1170,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
 
         @Override
         public void refine(long refineUtilAddress, OreAPI.Ore oreType, int amount) {
+            UnityPacketAdapter a = adapter;
+            if (a != null && a.isSessionReady() && a.game != null) {
+                a.game.getOres().refine(oreType, amount);
+            }
         }
 
         @Override

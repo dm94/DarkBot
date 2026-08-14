@@ -3,6 +3,7 @@ package com.github.manolo8.darkbot.behaviours;
 import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.core.IDarkBotAPI;
 import com.github.manolo8.darkbot.core.api.Capability;
+import com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter;
 import com.github.manolo8.darkbot.core.manager.GuiManager;
 import eu.darkbot.api.extensions.Behavior;
 import eu.darkbot.api.extensions.Feature;
@@ -38,14 +39,17 @@ public class AutoRefine implements Behavior {
     public void onTickBehavior() {
         if (!main.config.MISCELLANEOUS.AUTO_REFINE ||
                 !darkbotApi.hasCapability(Capability.DIRECT_REFINE) ||
-                guiManager.getAddress() == 0) return;
+                (guiManager.getAddress() == 0 && !(Main.API instanceof UnityPacketAdapter))) return;
 
         Arrays.stream(Ore.values())
                 .max(Comparator.comparingInt(this::maxRefine))
                 .ifPresent(ore -> {
                     int maxRefine = maxRefine(ore);
                     if (maxRefine <= 0 || !timer.tryActivate()) return;
-                    darkbotApi.refine(darkbotApi.readLong(guiManager.getAddress() + 0x78), ore, maxRefine);
+                    long refineAddress = guiManager.getAddress() == 0
+                            ? 0
+                            : darkbotApi.readLong(guiManager.getAddress() + 0x78);
+                    darkbotApi.refine(refineAddress, ore, maxRefine);
                 });
     }
 
