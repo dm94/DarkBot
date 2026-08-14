@@ -29,6 +29,7 @@ import eu.darkbot.api.managers.InventoryAPI;
 import eu.darkbot.api.managers.MovementAPI;
 import eu.darkbot.api.managers.OreAPI;
 import eu.darkbot.api.managers.PetAPI;
+import eu.darkbot.api.managers.QuestAPI;
 import eu.darkbot.api.managers.RepairAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
 import eu.darkbot.api.managers.StatsAPI;
@@ -272,7 +273,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
         Main.INSTANCE.pluginAPI.registerUnityManagers(eventBroker,
                 eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
                 game.getItems(), game.getMovement(), game.getAttack(), game.getPet(), game.getGroup(),
-                game.getHangar());
+                game.getHangar(), game.getQuests());
     }
 
     @Override
@@ -374,6 +375,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
         if (api == MovementAPI.class) return (T) g.getMovement();
         if (api == AttackAPI.class) return (T) g.getAttack();
         if (api == PetAPI.class) return (T) g.getPet();
+        if (api == QuestAPI.class) return (T) g.getQuests();
         return null;
     }
 
