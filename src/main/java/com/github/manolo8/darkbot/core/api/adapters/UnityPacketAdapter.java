@@ -255,6 +255,20 @@ public class UnityPacketAdapter extends GameAPIImpl<
         RepairManager repair = new RepairManager();
         this.game = new UnityGameState(registry, eventBroker, starSystem, hero, entities, 0,
                 stats, repair, ores, inventory);
+        game.getMovement().setPreferredZonePredicate(location -> {
+            GameMap currentMap = game.getStarSystem().getCurrentMap();
+            com.github.manolo8.darkbot.config.ZoneInfo preferred =
+                    Main.INSTANCE.config.PREFERRED.get(currentMap.getId());
+            // An empty Flash preferred-zone grid means "no restriction", not "nowhere".
+            if (preferred == null || preferred.getZones().isEmpty()) return true;
+            eu.darkbot.api.game.other.Area.Rectangle bounds =
+                    game.getStarSystem().getCurrentMapBounds();
+            double width = bounds.getX2() - bounds.getX();
+            double height = bounds.getY2() - bounds.getY();
+            return width <= 0 || height <= 0 || preferred.contains(
+                    (location.getX() - bounds.getX()) / width,
+                    (location.getY() - bounds.getY()) / height);
+        });
         // Pet (U-013): the packet PetManager reads the DarkBot PET config (enabled gate +
         // configured gear) and falls back to it after a module gear override expires.
         game.getPet().setConfig(
