@@ -297,7 +297,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
                 game.getItems(), game.getMovement(), game.getAttack(), game.getPet(), game.getGroup(),
                 game.getHangar(), game.getQuests(),
-                game.getBooster(), game.getDispatch(), game.getShipWarp(), game.getAssembly());
+                game.getBooster(), game.getDispatch(), game.getShipWarp(), game.getAssembly(),
+                game.getUserMessages());
     }
 
     @Override
