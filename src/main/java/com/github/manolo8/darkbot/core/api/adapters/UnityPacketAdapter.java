@@ -18,7 +18,10 @@ import eu.darkbot.api.API;
 import eu.darkbot.api.game.other.GameMap;
 import eu.darkbot.api.game.other.Locatable;
 import eu.darkbot.api.extensions.selectors.PetGearSupplier;
+import eu.darkbot.api.managers.AssemblyAPI;
 import eu.darkbot.api.managers.AttackAPI;
+import eu.darkbot.api.managers.BoosterAPI;
+import eu.darkbot.api.managers.DispatchAPI;
 import eu.darkbot.api.managers.EntitiesAPI;
 import eu.darkbot.api.managers.EventBrokerAPI;
 import eu.darkbot.api.managers.HeroAPI;
@@ -31,6 +34,7 @@ import eu.darkbot.api.managers.OreAPI;
 import eu.darkbot.api.managers.PetAPI;
 import eu.darkbot.api.managers.QuestAPI;
 import eu.darkbot.api.managers.RepairAPI;
+import eu.darkbot.api.managers.ShipWarpAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
 import eu.darkbot.api.managers.StatsAPI;
 import eu.darkbot.unity.codec.PacketDef;
@@ -292,7 +296,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
         Main.INSTANCE.pluginAPI.registerUnityManagers(eventBroker,
                 eventBroker, starSystem, hero, entities, stats, repair, ores, inventory,
                 game.getItems(), game.getMovement(), game.getAttack(), game.getPet(), game.getGroup(),
-                game.getHangar(), game.getQuests());
+                game.getHangar(), game.getQuests(),
+                game.getBooster(), game.getDispatch(), game.getShipWarp(), game.getAssembly());
     }
 
     @Override
@@ -395,6 +400,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
         if (api == AttackAPI.class) return (T) g.getAttack();
         if (api == PetAPI.class) return (T) g.getPet();
         if (api == QuestAPI.class) return (T) g.getQuests();
+        if (api == BoosterAPI.class) return (T) g.getBooster();
+        if (api == DispatchAPI.class) return (T) g.getDispatch();
+        if (api == ShipWarpAPI.class) return (T) g.getShipWarp();
+        if (api == AssemblyAPI.class) return (T) g.getAssembly();
         return null;
     }
 
