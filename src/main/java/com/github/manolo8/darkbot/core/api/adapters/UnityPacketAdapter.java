@@ -114,10 +114,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
      * {@code version} field (the wire value is the {@code packets.json → meta.versionHash}
      * of the client build, not a "x.y.z" string). When the game updates, the map server
      * rejects the old value with "Version mismatch: server version=X" — copy that X here.
-     * (2026-08-12 update: previous build hash 8cf182a3… → 0994fb6e…, observed from the
+     * (2026-08-19 update: previous build hash 0994fb6e… → e160dc30…, observed from the
      * live server's VersionCommand after the client update.)
      */
-    public static final String UNITY_CLIENT_VERSION = "0994fb6ea86f9b16058e2e9284c16608";
+    public static final String UNITY_CLIENT_VERSION = "e160dc30295f509e2405309a9e4d50fb";
     /** Initial map id (portal jumps re-resolve in a later iteration). */
     public static final int MAP_ID = 1;
     /** How often the session state is re-published to {@code BotInstaller.invalid}. */
