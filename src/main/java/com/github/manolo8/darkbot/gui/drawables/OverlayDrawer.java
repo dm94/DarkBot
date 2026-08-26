@@ -1,6 +1,5 @@
 package com.github.manolo8.darkbot.gui.drawables;
 
-import com.github.manolo8.darkbot.core.objects.facades.BoosterProxy;
 import com.github.manolo8.darkbot.core.objects.group.GroupMember;
 import eu.darkbot.api.config.ConfigSetting;
 import eu.darkbot.api.config.types.DisplayFlag;
@@ -15,6 +14,7 @@ import eu.darkbot.api.managers.ConfigAPI;
 import eu.darkbot.api.managers.GroupAPI;
 import eu.darkbot.api.managers.RepairAPI;
 import eu.darkbot.api.managers.StatsAPI;
+import com.github.manolo8.darkbot.utils.Time;
 import eu.darkbot.util.TimeUtils;
 
 import java.awt.font.TextAttribute;
@@ -55,11 +55,13 @@ public class OverlayDrawer implements Drawable {
     @Override
     public void onDraw(MapGraphics mg) {
         drawStats(mg);
-        if (!drawGroup(mg)) drawBoosters(mg);
+        if (!drawGroup(mg))
+            drawBoosters(mg);
     }
 
     private boolean drawGroup(MapGraphics mg) {
-        if (!mg.hasDisplayFlag(DisplayFlag.GROUP_AREA) || !group.hasGroup()) return false;
+        if (!mg.hasDisplayFlag(DisplayFlag.GROUP_AREA) || !group.hasGroup())
+            return false;
 
         boolean hideNames = !mg.hasDisplayFlag(DisplayFlag.GROUP_NAMES);
 
@@ -67,7 +69,8 @@ public class OverlayDrawer implements Drawable {
                 (x, y, w, member) -> {
 
                     Map<TextAttribute, Object> attrs = new HashMap<>();
-                    attrs.put(TextAttribute.WEIGHT, member.isLeader() ? TextAttribute.WEIGHT_BOLD : TextAttribute.WEIGHT_REGULAR);
+                    attrs.put(TextAttribute.WEIGHT,
+                            member.isLeader() ? TextAttribute.WEIGHT_BOLD : TextAttribute.WEIGHT_REGULAR);
                     attrs.put(TextAttribute.STRIKETHROUGH, member.isDead() ? TextAttribute.STRIKETHROUGH_ON : false);
                     attrs.put(TextAttribute.UNDERLINE, member.isLocked() ? TextAttribute.UNDERLINE_ON : -1);
 
@@ -80,7 +83,8 @@ public class OverlayDrawer implements Drawable {
                     InfosDrawer.drawHealth(mg, member.getMemberInfo(), Point.of(x, y + 18), w / 2 - 3, 4, 2);
 
                     if (member.getTargetInfo().getShipType() != 0)
-                        InfosDrawer.drawHealth(mg, member.getTargetInfo(), Point.of(x + (w / 2d) + 3, y + 18), w / 2 - 3, 4, 2);
+                        InfosDrawer.drawHealth(mg, member.getTargetInfo(), Point.of(x + (w / 2d) + 3, y + 18),
+                                w / 2 - 3, 4, 2);
 
                 },
                 member -> {
@@ -92,19 +96,28 @@ public class OverlayDrawer implements Drawable {
     }
 
     private void drawBoosters(MapGraphics mg) {
-        if (!mg.hasDisplayFlag(DisplayFlag.BOOSTER_AREA)) return;
+        if (!mg.hasDisplayFlag(DisplayFlag.BOOSTER_AREA))
+            return;
 
-        Stream<? extends BoosterAPI.Booster> boosters = this.boosters.getBoosters().stream().filter(b -> b.getAmount() > 0);
+        Stream<? extends BoosterAPI.Booster> boosters = this.boosters.getBoosters().stream()
+                .filter(b -> b.getAmount() > 0);
         if (mg.hasDisplayFlag(DisplayFlag.SORT_BOOSTERS))
             boosters = boosters.sorted(Comparator.comparingDouble(b -> -b.getRemainingTime()));
 
         drawBackgrounded(mg, 15, MapGraphics.StringAlign.RIGHT,
                 (x, y, w, booster) -> {
                     mg.setColor(booster.getColor());
-                    mg.getGraphics2D().drawString(((BoosterProxy.Booster) booster).toSimpleString(), x, y + 14);
+                    mg.getGraphics2D().drawString(toSimple(booster), x, y + 14);
                 },
-                b -> mg.getGraphics2D().getFontMetrics().stringWidth(((BoosterProxy.Booster) b).toSimpleString()),
+                b -> mg.getGraphics2D().getFontMetrics().stringWidth(toSimple(b)),
                 boosters.collect(Collectors.toList()));
+    }
+
+    private static String toSimple(BoosterAPI.Booster booster) {
+        return String.format("%3s %2.0f%% %s",
+                Time.secondsToShort(booster.getRemainingTime()),
+                booster.getAmount() * 100,
+                booster.getSmall());
     }
 
     private void drawStats(MapGraphics mg) {
@@ -115,12 +128,14 @@ public class OverlayDrawer implements Drawable {
                     "exp/h " + toEarnedPerHour(stats.getEarnedExperience()),
                     "hon/h " + toEarnedPerHour(stats.getEarnedHonor()),
                     "cargo " + stats.getCargo() + '/' + stats.getMaxCargo(),
-                    "death " + repair.getDeathAmount() + '/' + (maxDeaths.getValue() > -1 ? maxDeaths.getValue() : "∞"));
+                    "death " + repair.getDeathAmount() + '/'
+                            + (maxDeaths.getValue() > -1 ? maxDeaths.getValue() : "∞"));
 
     }
 
     private String toEarnedPerHour(double value) {
-        // Lose millisecond precision, in hopes of better double precision, at least always 1s runtime
+        // Lose millisecond precision, in hopes of better double precision, at least
+        // always 1s runtime
         long seconds = Math.max((long) (runtime.getEarned() / TimeUtils.SECOND), 1L);
         return STAT_FORMAT.format(value / (seconds / 3600d));
     }
@@ -133,10 +148,11 @@ public class OverlayDrawer implements Drawable {
     }
 
     private <T> void drawBackgrounded(MapGraphics mg, int lineHeight, MapGraphics.StringAlign align,
-                                      Renderer<T> renderer,
-                                      ToIntFunction<T> widthGetter,
-                                      Collection<T> toRender) {
-        if (toRender.isEmpty()) return;
+            Renderer<T> renderer,
+            ToIntFunction<T> widthGetter,
+            Collection<T> toRender) {
+        if (toRender.isEmpty())
+            return;
         mg.setFont("small");
 
         int width = toRender.stream().mapToInt(widthGetter).max().orElse(0) + 8;
