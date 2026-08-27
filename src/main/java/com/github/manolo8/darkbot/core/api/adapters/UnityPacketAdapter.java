@@ -1268,10 +1268,9 @@ public class UnityPacketAdapter extends
                     System.out.println("[unity-diagnostic] jump confirmed, now on map " + mapNow);
                     return;
                 }
-                if (!g.getMovement().isJumpPending()) {
-                    System.out.println("[unity-diagnostic] portal jump confirmed by server");
-                    return;
-                }
+                // NOTE: a cleared isJumpPending() is NOT a confirmation — JumpDeniedCommand
+                // (or a map reset) also clears it. Only a real map change counts as success;
+                // keep retrying until then or until the deadline.
                 eu.darkbot.api.game.other.Location at = g.getMovement().getCurrentLocation();
                 System.out.println("[unity-diagnostic] retrying portal jump gate=" + portal.getId()
                         + " from " + (int) at.getX() + "," + (int) at.getY());
