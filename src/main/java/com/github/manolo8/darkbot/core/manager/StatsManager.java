@@ -2,6 +2,7 @@ package com.github.manolo8.darkbot.core.manager;
 
 import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.core.BotInstaller;
+import com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter;
 import com.github.manolo8.darkbot.core.itf.Manager;
 import com.github.manolo8.darkbot.core.itf.NativeUpdatable;
 import com.github.manolo8.darkbot.core.utils.TimeSeriesImpl;
@@ -38,6 +39,8 @@ public class StatsManager implements Manager, StatsAPI, NativeUpdatable {
     public int userId;
     public volatile String sid;
     public volatile String instance;
+
+    private boolean unityMirrorLogged;
 
     private final Map<StatKey, StatImpl> statistics = new HashMap<>();
 
@@ -85,6 +88,8 @@ public class StatsManager implements Manager, StatsAPI, NativeUpdatable {
     public void tick() {
         updateNonZero(runtime, System.currentTimeMillis());
 
+        if (tickUnityStats()) return;
+
         if (address == 0) return;
 
         updateNonZero(credits, readDouble(0x178));
@@ -107,6 +112,50 @@ public class StatsManager implements Manager, StatsAPI, NativeUpdatable {
 
         for (BootyKeyType key: BootyKeyType.VALUES)
             track(key.getStatKey(), readInt(key.getOffset()));
+    }
+
+    /**
+     * In unity mode the stats arrive as packets to the unity pipeline, not
+     * through memory reads, and that instance has no main loop of its own.
+     * This mirrors the packet-backed values into the core stats, so every
+     * consumer (features cached before the session was up and direct
+     * {@code main.statsManager} users alike) sees live values, and keeps the
+     * unity instance's runtime fresh by ticking it.
+     *
+     * @return true if the unity pipeline is up and stats were mirrored
+     */
+    private boolean tickUnityStats() {
+        if (!(API instanceof UnityPacketAdapter)) return false;
+
+        eu.darkbot.unity.game.StatsManager unity = (eu.darkbot.unity.game.StatsManager)
+                ((UnityPacketAdapter) API).getManager(StatsAPI.class);
+        if (unity == null) return false; // session pipeline not up yet
+
+        unity.tick();
+
+        updateNonZero(credits, unity.getStatValue(Stats.General.CREDITS));
+        updateNonZero(uridium, unity.getStatValue(Stats.General.URIDIUM));
+        updateNonZero(experience, unity.getStatValue(Stats.General.EXPERIENCE));
+        checkHonor(updateNonZero(honor, unity.getStatValue(Stats.General.HONOR)));
+
+        cargo.track(unity.getStatValue(Stats.General.CARGO));
+        maxCargo.track(unity.getStatValue(Stats.General.MAX_CARGO));
+
+        novaEnergy.track(unity.getStatValue(Stats.General.NOVA_ENERGY));
+        teleportBonus.track(unity.getStatValue(Stats.General.TELEPORT_BONUS_AMOUNT));
+
+        for (Stats.BootyKey key : Stats.BootyKey.values()) {
+            StatImpl stat = statistics.get(StatKey.of(key));
+            if (stat != null) updateNonZero(stat, unity.getStatValue(key));
+        }
+
+        if (!unityMirrorLogged) {
+            unityMirrorLogged = true;
+            System.out.println("[unity] stats mirror active: credits=" + (long) credits.getCurrent()
+                    + ", uridium=" + (long) uridium.getCurrent()
+                    + ", cargo=" + (int) cargo.getCurrent() + "/" + (int) maxCargo.getCurrent());
+        }
+        return true;
     }
 
     @Override
@@ -188,6 +237,10 @@ public class StatsManager implements Manager, StatsAPI, NativeUpdatable {
     @Override
     public void resetStats() {
         resetValues();
+        if (!(API instanceof UnityPacketAdapter)) return;
+
+        StatsAPI unity = ((UnityPacketAdapter) API).getManager(StatsAPI.class);
+        if (unity != null) unity.resetStats();
     }
 
     public AverageStats getCpuStats() {

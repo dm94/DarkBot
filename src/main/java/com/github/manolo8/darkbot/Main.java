@@ -293,9 +293,12 @@ public class Main extends Thread implements PluginListener, BotAPI {
      * Packet sessions already update their managers from decoded frames. Ticking the native
      * memory managers here would read the NoOp memory (and make the native GUI gate report
      * "not loaded"), so the normal module loop must be driven by the packet adapter itself.
+     * statsManager.tick() is still called: with the unity pipeline up it mirrors the
+     * packet-backed stats into the core stats instead of reading memory.
      */
     private void validUnityTick(UnityPacketAdapter unity) {
         API.tick();
+        statsManager.tick();
         tickingModule = running && unity.canTickModule();
         tickLogic(tickingModule);
     }
