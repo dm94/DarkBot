@@ -26,11 +26,17 @@ public class StartupParams implements API.Singleton {
          * Example usage: {@code -login C:\Users\Owner\login.properties}
          */
         LOGIN(AutoLoginProps::new),
-        START, /** Auto-start the bot */
-        NO_OP, /** Run the bot in no-op mode (no-op api) */
-        CONFIG(s -> s), /** Start the bot with a specific config */
-        HIDE, /** If the bot should hide api window on start */
-        NO_WARN; /** Disable warnings about unsupported java version */
+        START,
+        /** Auto-start the bot */
+        NO_OP,
+        /** Run the bot in no-op mode (no-op api) */
+        CONFIG(s -> s),
+        /** Start the bot with a specific config */
+        HIDE,
+        /** If the bot should hide api window on start */
+        NO_WARN;
+
+        /** Disable warnings about unsupported java version */
 
         private final ThrowingFunction<String, ?, Exception> parser;
 
@@ -43,7 +49,8 @@ public class StartupParams implements API.Singleton {
         }
 
         public static LaunchArg of(String str) {
-            while (str.startsWith(COMMAND_PREFIX)) str = str.substring(1);
+            while (str.startsWith(COMMAND_PREFIX))
+                str = str.substring(1);
             try {
                 return LaunchArg.valueOf(str.toUpperCase(Locale.ROOT).replace("-", "_"));
             } catch (IllegalArgumentException e) {
@@ -52,7 +59,8 @@ public class StartupParams implements API.Singleton {
         }
 
         public Object parse(String param) {
-            if (parser == null) return true;
+            if (parser == null)
+                return true;
             try {
                 return parser.apply(param);
             } catch (Exception e) {
@@ -66,7 +74,8 @@ public class StartupParams implements API.Singleton {
     public enum PropertyKey {
         USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, GAME_SID, USER_ID, INSTANCE,
         MINI_CLIENT, MAP_ID, CAPTURED_LOGIN_FILE, TRACE_OUTBOUND, DIAGNOSTIC_MOVE,
-        DIAGNOSTIC_MOVE_DISTANCE, CAPTURE_S2C, ALLOW_STORE_SID;
+        DIAGNOSTIC_MOVE_DISTANCE, DIAGNOSTIC_PORTAL, CAPTURE_S2C, ALLOW_STORE_SID;
+
         @Override
         public String toString() {
             return this.name().toLowerCase(Locale.ROOT);
@@ -83,7 +92,8 @@ public class StartupParams implements API.Singleton {
                 System.err.println("Unknown startup argument: " + strArgument + " , ignoring argument.");
                 continue;
             }
-            if (arg.parser != null) i++;
+            if (arg.parser != null)
+                i++;
             if (i >= args.length) {
                 System.err.println("Missing required argument for " + strArgument);
                 break;
@@ -190,7 +200,9 @@ public class StartupParams implements API.Singleton {
             return getProperty(PropertyKey.INSTANCE, "instance");
         }
 
-        /** Whether the LoginRequest should identify this connection as a mini client. */
+        /**
+         * Whether the LoginRequest should identify this connection as a mini client.
+         */
         public String getMiniClient() {
             return getProperty(PropertyKey.MINI_CLIENT, "miniClient");
         }
@@ -221,8 +233,17 @@ public class StartupParams implements API.Singleton {
         }
 
         /**
-         * Optional path for a raw server→client frame dump (3-byte framed fixture format),
-         * used to regenerate the packet dictionary with {@code unity-harness:detectDefs}.
+         * Enables a one-shot diagnostic travel to the nearest portal and jump attempt.
+         */
+        public String getDiagnosticPortal() {
+            return getProperty(PropertyKey.DIAGNOSTIC_PORTAL, "diagnosticPortal");
+        }
+
+        /**
+         * Optional path for a raw server→client frame dump (3-byte framed fixture
+         * format),
+         * used to regenerate the packet dictionary with
+         * {@code unity-harness:detectDefs}.
          */
         public String getCaptureS2C() {
             return getProperty(PropertyKey.CAPTURE_S2C, "captureS2C");
@@ -245,7 +266,8 @@ public class StartupParams implements API.Singleton {
         }
 
         public void updateLoginFile() {
-            try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(path), StandardCharsets.UTF_8)) {
+            try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(path),
+                    StandardCharsets.UTF_8)) {
                 prop.store(writer, null);
             } catch (IOException e) {
                 e.printStackTrace();

@@ -156,6 +156,7 @@ public class UnityPacketAdapter extends
     private volatile boolean traceOutbound;
     private volatile boolean diagnosticMove;
     private volatile int diagnosticMoveDistance;
+    private volatile boolean diagnosticPortal;
     /** Opt-in raw server→client frame dump ({@code captureS2C} login property). */
     private volatile OutputStream s2cCapture;
 
@@ -177,12 +178,13 @@ public class UnityPacketAdapter extends
         final boolean traceOutbound;
         final boolean diagnosticMove;
         final int diagnosticMoveDistance;
+        final boolean diagnosticPortal;
         final String captureS2C;
 
         SessionInput(String server, String username, String password, String dosid,
                 String gameSid, int userId, String instance, boolean miniClient, int mapId,
                 boolean traceOutbound, boolean diagnosticMove, int diagnosticMoveDistance,
-                String captureS2C) {
+                boolean diagnosticPortal, String captureS2C) {
             this.server = server;
             this.username = username;
             this.password = password;
@@ -195,6 +197,7 @@ public class UnityPacketAdapter extends
             this.traceOutbound = traceOutbound;
             this.diagnosticMove = diagnosticMove;
             this.diagnosticMoveDistance = diagnosticMoveDistance;
+            this.diagnosticPortal = diagnosticPortal;
             this.captureS2C = captureS2C == null || captureS2C.trim().isEmpty()
                     ? null
                     : captureS2C.trim();
@@ -527,6 +530,7 @@ public class UnityPacketAdapter extends
                 || "1".equals(System.getenv("DARKBOT_UNITY_TRACE_OUTBOUND"));
         this.diagnosticMove = input.diagnosticMove;
         this.diagnosticMoveDistance = Math.max(1, input.diagnosticMoveDistance);
+        this.diagnosticPortal = input.diagnosticPortal;
         openS2cCapture(input.captureS2C);
 
         Thread worker = new Thread(() -> {
@@ -668,6 +672,7 @@ public class UnityPacketAdapter extends
                     parseBooleanInt(props.getTraceOutbound(), false),
                     parseBooleanInt(props.getDiagnosticMove(), false),
                     parseInt(props.getDiagnosticMoveDistance(), 200),
+                    parseBooleanInt(props.getDiagnosticPortal(), false),
                     props.getCaptureS2C());
         }
 
@@ -679,7 +684,7 @@ public class UnityPacketAdapter extends
 
         return new SessionInput(serverFromUrl(login.getUrl()), login.getUsername(),
                 login.getPassword(), login.getSid(), null, 0, null, false,
-                MAP_ID, false, false, 200, null);
+                MAP_ID, false, false, 200, false, null);
     }
 
     /**
@@ -801,6 +806,9 @@ public class UnityPacketAdapter extends
         c.setLoginMethod(method);
         c.start();
         this.connector = c;
+        // Portal jumps: on JumpInitiatedCommand the connector must reconnect to the
+        // DESTINATION map (the real client's setReconnectMap), not the login map.
+        g.onJumpConfirmed(c::requestMapOverride);
 
         // Outbound channel: every manager/entity sends through the live connection.
         g.setPacketSender(packet -> {
@@ -813,6 +821,21 @@ public class UnityPacketAdapter extends
             try {
                 conn.send(packet);
                 g.onOutbound(packet);
+                if ("ChannelCloseRequest".equals(packet.name())) {
+                    // The real client tears the TCP channel down right after the close
+                    // request (conn5 frame 98). Force the disconnect so the connector
+                    // reconnects on the jump's destination map instead of idling.
+                    Thread closer = new Thread(() -> {
+                        try {
+                            Thread.sleep(1_000);
+                        } catch (InterruptedException ignored) {
+                            Thread.currentThread().interrupt();
+                        }
+                        conn.close();
+                    }, "unity-jump-teardown");
+                    closer.setDaemon(true);
+                    closer.start();
+                }
                 if (traceOutbound) {
                     String mode = ("MoveRequest".equals(packet.name()) || "JumpRequest".equals(packet.name()))
                             ? "[" + g.getMovement().getLastActionMode().name().toLowerCase() + "] "
@@ -839,6 +862,8 @@ public class UnityPacketAdapter extends
 
         if (diagnosticMove)
             startDiagnosticMove(c, g);
+        if (diagnosticPortal)
+            startDiagnosticPortal(c, g);
 
         long nextMetricsLog = System.currentTimeMillis() + 10_000;
         long nextUnityReviveAt = 0;
@@ -908,16 +933,21 @@ public class UnityPacketAdapter extends
 
     /**
      * /**
-     * Opens the opt-in raw server→client frame dump given by the {@code captureS2C} login
-     * property. Frames are appended in the harness fixture format (3-byte big-endian length
-     * + payload), so the file feeds {@code unity-harness:detectDefs} directly to regenerate
+     * Opens the opt-in raw server→client frame dump given by the {@code captureS2C}
+     * login
+     * property. Frames are appended in the harness fixture format (3-byte
+     * big-endian length
+     * + payload), so the file feeds {@code unity-harness:detectDefs} directly to
+     * regenerate
      * the packet dictionary after a server build rotates wire ids.
      */
     private void openS2cCapture(String path) {
-        if (path == null) return;
+        if (path == null)
+            return;
         try {
             Path file = Paths.get(path);
-            if (file.getParent() != null) Files.createDirectories(file.getParent());
+            if (file.getParent() != null)
+                Files.createDirectories(file.getParent());
             s2cCapture = Files.newOutputStream(file, StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND, StandardOpenOption.WRITE);
             System.out.println("[unity] Raw S2C capture -> " + file.toAbsolutePath()
@@ -927,10 +957,14 @@ public class UnityPacketAdapter extends
         }
     }
 
-    /** Appends one payload to the raw capture; one failed write disables the dump, never the session. */
+    /**
+     * Appends one payload to the raw capture; one failed write disables the dump,
+     * never the session.
+     */
     private void writeCapturedFrame(byte[] payload) {
         OutputStream out = s2cCapture;
-        if (out == null) return;
+        if (out == null)
+            return;
         try {
             out.write((payload.length >>> 16) & 0xFF);
             out.write((payload.length >>> 8) & 0xFF);
@@ -943,7 +977,10 @@ public class UnityPacketAdapter extends
         }
     }
 
-    /** Logs movement and action confirmations without dumping session or unrelated packet data. */
+    /**
+     * Logs movement and action confirmations without dumping session or unrelated
+     * packet data.
+     */
     private void traceInboundFrame(byte[] payload) {
         try {
             PacketDef def = inboundReader.read(payload);
@@ -1126,6 +1163,124 @@ public class UnityPacketAdapter extends
         }, "darkbot-unity-diagnostic-move");
         move.setDaemon(true);
         move.start();
+    }
+
+    /**
+     * Opt-in one-shot portal travel diagnostic ({@code diagnosticPortal} login
+     * property).
+     * Travels to the nearest visible portal and attempts a jump, exercising the
+     * full
+     * route-move + JumpRequest + ShipInitialization flow used for map travel.
+     */
+    private void startDiagnosticPortal(SessionConnector c, UnityGameState g) {
+        Thread t = new Thread(() -> {
+            long deadline = System.currentTimeMillis() + 30_000;
+            while (System.currentTimeMillis() < deadline && !isSessionReady()) {
+                try {
+                    Thread.sleep(250);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            if (!isSessionReady() || c.connection() == null) {
+                System.out.println("[unity-diagnostic] portal skipped: session did not become ready");
+                return;
+            }
+            // Portals are created by JumpgateCreateCommand shortly after the map session
+            // goes READY.
+            eu.darkbot.api.game.entities.Portal portal = null;
+            deadline = System.currentTimeMillis() + 30_000;
+            while (System.currentTimeMillis() < deadline && portal == null) {
+                Collection<? extends eu.darkbot.api.game.entities.Portal> portals = g.getEntities().getPortals();
+                eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
+                double best = Double.MAX_VALUE;
+                for (eu.darkbot.api.game.entities.Portal p : portals) {
+                    if (p.getLocationInfo() == null || !p.getLocationInfo().isInitialized())
+                        continue;
+                    double d = here.distanceTo(p.getLocationInfo());
+                    if (d < best) {
+                        best = d;
+                        portal = p;
+                    }
+                }
+                if (portal == null) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+            if (portal == null) {
+                System.out.println("[unity-diagnostic] portal skipped: no portals visible");
+                return;
+            }
+            double px = portal.getLocationInfo().getX();
+            double py = portal.getLocationInfo().getY();
+            eu.darkbot.api.game.other.Location start = g.getMovement().getCurrentLocation();
+            System.out.println("[unity-diagnostic] portal gate=" + portal.getId() + " at " + (int) px + "," + (int) py
+                    + " hero=" + (int) start.getX() + "," + (int) start.getY() + " distance="
+                    + (int) start.distanceTo(portal.getLocationInfo()));
+            deadline = System.currentTimeMillis() + 120_000;
+            while (System.currentTimeMillis() < deadline) {
+                eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
+                if (here.distanceTo(portal.getLocationInfo()) <= 150)
+                    break;
+                g.getMovement().moveTo(px, py);
+                try {
+                    Thread.sleep(2_000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
+            double remaining = here.distanceTo(portal.getLocationInfo());
+            if (remaining > 400) {
+                System.out.println("[unity-diagnostic] portal jump skipped: still " + (int) remaining + " units away");
+                return;
+            }
+            System.out.println("[unity-diagnostic] jumping portal gate=" + portal.getId()
+                    + " from " + (int) here.getX() + "," + (int) here.getY());
+            g.getMovement().jumpPortal(portal);
+            // The server accepts the activation+JumpRequest pair only once its own
+            // authoritative hero position (BeaconCommand) reaches the gate, which lags
+            // the local simulation by ~1s. A single attempt can therefore be silently
+            // dropped: repeat until JumpInitiatedCommand clears the pending flag or the
+            // session lands on the next map.
+            int mapBefore = g.getStarSystem().getCurrentMap().getId();
+            deadline = System.currentTimeMillis() + 60_000;
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    Thread.sleep(1_500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                if (!isSessionReady()) {
+                    System.out.println("[unity-diagnostic] session ended during portal jump retry");
+                    return;
+                }
+                int mapNow = g.getStarSystem().getCurrentMap().getId();
+                if (mapNow != mapBefore) {
+                    System.out.println("[unity-diagnostic] jump confirmed, now on map " + mapNow);
+                    return;
+                }
+                if (!g.getMovement().isJumpPending()) {
+                    System.out.println("[unity-diagnostic] portal jump confirmed by server");
+                    return;
+                }
+                eu.darkbot.api.game.other.Location at = g.getMovement().getCurrentLocation();
+                System.out.println("[unity-diagnostic] retrying portal jump gate=" + portal.getId()
+                        + " from " + (int) at.getX() + "," + (int) at.getY());
+                g.getMovement().jumpPortal(portal);
+            }
+            System.out.println("[unity-diagnostic] portal jump not confirmed after retries");
+        }, "darkbot-unity-diagnostic-portal");
+        t.setDaemon(true);
+        t.start();
     }
 
     /**
