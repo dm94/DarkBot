@@ -157,6 +157,10 @@ public class UnityPacketAdapter extends
     private volatile boolean diagnosticMove;
     private volatile int diagnosticMoveDistance;
     private volatile boolean diagnosticPortal;
+    /**
+     * Destination map name/id for portal travel ({@code targetMap} login property).
+     */
+    private volatile String targetMap;
     /** Opt-in raw server→client frame dump ({@code captureS2C} login property). */
     private volatile OutputStream s2cCapture;
 
@@ -179,12 +183,13 @@ public class UnityPacketAdapter extends
         final boolean diagnosticMove;
         final int diagnosticMoveDistance;
         final boolean diagnosticPortal;
+        final String targetMap;
         final String captureS2C;
 
         SessionInput(String server, String username, String password, String dosid,
                 String gameSid, int userId, String instance, boolean miniClient, int mapId,
                 boolean traceOutbound, boolean diagnosticMove, int diagnosticMoveDistance,
-                boolean diagnosticPortal, String captureS2C) {
+                boolean diagnosticPortal, String targetMap, String captureS2C) {
             this.server = server;
             this.username = username;
             this.password = password;
@@ -198,6 +203,9 @@ public class UnityPacketAdapter extends
             this.diagnosticMove = diagnosticMove;
             this.diagnosticMoveDistance = diagnosticMoveDistance;
             this.diagnosticPortal = diagnosticPortal;
+            this.targetMap = targetMap == null || targetMap.trim().isEmpty()
+                    ? null
+                    : targetMap.trim();
             this.captureS2C = captureS2C == null || captureS2C.trim().isEmpty()
                     ? null
                     : captureS2C.trim();
@@ -531,6 +539,7 @@ public class UnityPacketAdapter extends
         this.diagnosticMove = input.diagnosticMove;
         this.diagnosticMoveDistance = Math.max(1, input.diagnosticMoveDistance);
         this.diagnosticPortal = input.diagnosticPortal;
+        this.targetMap = input.targetMap;
         openS2cCapture(input.captureS2C);
 
         Thread worker = new Thread(() -> {
@@ -673,6 +682,7 @@ public class UnityPacketAdapter extends
                     parseBooleanInt(props.getDiagnosticMove(), false),
                     parseInt(props.getDiagnosticMoveDistance(), 200),
                     parseBooleanInt(props.getDiagnosticPortal(), false),
+                    props.getTargetMap(),
                     props.getCaptureS2C());
         }
 
@@ -684,7 +694,7 @@ public class UnityPacketAdapter extends
 
         return new SessionInput(serverFromUrl(login.getUrl()), login.getUsername(),
                 login.getPassword(), login.getSid(), null, 0, null, false,
-                MAP_ID, false, false, 200, false, null);
+                MAP_ID, false, false, 200, false, null, null);
     }
 
     /**
@@ -1166,120 +1176,259 @@ public class UnityPacketAdapter extends
     }
 
     /**
-     * Opt-in one-shot portal travel diagnostic ({@code diagnosticPortal} login
-     * property).
-     * Travels to the nearest visible portal and attempts a jump, exercising the
-     * full
-     * route-move + JumpRequest + ShipInitialization flow used for map travel.
+     * Opt-in portal travel ({@code diagnosticPortal} login property). With a
+     * {@code targetMap} configured it routes every hop through
+     * {@link StarSystemAPI#findNext} and repeats walk-jump-confirm until the
+     * destination is reached — it never guesses among unvisited gates, which is
+     * what previously landed runs on unintended maps. Only without a target does
+     * it keep the one-shot "jump the nearest gate" mechanism diagnostic.
      */
     private void startDiagnosticPortal(SessionConnector c, UnityGameState g) {
-        Thread t = new Thread(() -> {
-            long deadline = System.currentTimeMillis() + 30_000;
-            while (System.currentTimeMillis() < deadline && !isSessionReady()) {
-                try {
-                    Thread.sleep(250);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-            if (!isSessionReady() || c.connection() == null) {
-                System.out.println("[unity-diagnostic] portal skipped: session did not become ready");
-                return;
-            }
-            // Portals are created by JumpgateCreateCommand shortly after the map session
-            // goes READY.
-            eu.darkbot.api.game.entities.Portal portal = null;
-            deadline = System.currentTimeMillis() + 30_000;
-            while (System.currentTimeMillis() < deadline && portal == null) {
-                Collection<? extends eu.darkbot.api.game.entities.Portal> portals = g.getEntities().getPortals();
-                eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
-                double best = Double.MAX_VALUE;
-                for (eu.darkbot.api.game.entities.Portal p : portals) {
-                    if (p.getLocationInfo() == null || !p.getLocationInfo().isInitialized())
-                        continue;
-                    double d = here.distanceTo(p.getLocationInfo());
-                    if (d < best) {
-                        best = d;
-                        portal = p;
-                    }
-                }
-                if (portal == null) {
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                }
-            }
-            if (portal == null) {
-                System.out.println("[unity-diagnostic] portal skipped: no portals visible");
-                return;
-            }
-            double px = portal.getLocationInfo().getX();
-            double py = portal.getLocationInfo().getY();
-            eu.darkbot.api.game.other.Location start = g.getMovement().getCurrentLocation();
-            System.out.println("[unity-diagnostic] portal gate=" + portal.getId() + " at " + (int) px + "," + (int) py
-                    + " hero=" + (int) start.getX() + "," + (int) start.getY() + " distance="
-                    + (int) start.distanceTo(portal.getLocationInfo()));
-            deadline = System.currentTimeMillis() + 120_000;
-            while (System.currentTimeMillis() < deadline) {
-                eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
-                if (here.distanceTo(portal.getLocationInfo()) <= 150)
-                    break;
-                g.getMovement().moveTo(px, py);
-                try {
-                    Thread.sleep(2_000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-            eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
-            double remaining = here.distanceTo(portal.getLocationInfo());
-            if (remaining > 400) {
-                System.out.println("[unity-diagnostic] portal jump skipped: still " + (int) remaining + " units away");
-                return;
-            }
-            System.out.println("[unity-diagnostic] jumping portal gate=" + portal.getId()
-                    + " from " + (int) here.getX() + "," + (int) here.getY());
-            g.getMovement().jumpPortal(portal);
-            // The server accepts the activation+JumpRequest pair only once its own
-            // authoritative hero position (BeaconCommand) reaches the gate, which lags
-            // the local simulation by ~1s. A single attempt can therefore be silently
-            // dropped: repeat until JumpInitiatedCommand clears the pending flag or the
-            // session lands on the next map.
-            int mapBefore = g.getStarSystem().getCurrentMap().getId();
-            deadline = System.currentTimeMillis() + 60_000;
-            while (System.currentTimeMillis() < deadline) {
-                try {
-                    Thread.sleep(1_500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                if (!isSessionReady()) {
-                    System.out.println("[unity-diagnostic] session ended during portal jump retry");
-                    return;
-                }
-                int mapNow = g.getStarSystem().getCurrentMap().getId();
-                if (mapNow != mapBefore) {
-                    System.out.println("[unity-diagnostic] jump confirmed, now on map " + mapNow);
-                    return;
-                }
-                // NOTE: a cleared isJumpPending() is NOT a confirmation — JumpDeniedCommand
-                // (or a map reset) also clears it. Only a real map change counts as success;
-                // keep retrying until then or until the deadline.
-                eu.darkbot.api.game.other.Location at = g.getMovement().getCurrentLocation();
-                System.out.println("[unity-diagnostic] retrying portal jump gate=" + portal.getId()
-                        + " from " + (int) at.getX() + "," + (int) at.getY());
-                g.getMovement().jumpPortal(portal);
-            }
-            System.out.println("[unity-diagnostic] portal jump not confirmed after retries");
-        }, "darkbot-unity-diagnostic-portal");
+        Thread t = new Thread(() -> runPortalTravel(c, g), "darkbot-unity-portal-travel");
         t.setDaemon(true);
         t.start();
+    }
+
+    /**
+     * Entry point of the travel thread: waits for READY, then travels or diagnoses.
+     */
+    private void runPortalTravel(SessionConnector c, UnityGameState g) {
+        if (!awaitSessionReady(c))
+            return;
+        GameMap target = resolveTravelTarget(g);
+        if (target != null)
+            travelToMap(c, g, target);
+        else
+            jumpNearestPortalOnce(c, g);
+    }
+
+    /**
+     * Blocks until the map session is READY (up to 30s). @return false when it
+     * never was.
+     */
+    private boolean awaitSessionReady(SessionConnector c) {
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (System.currentTimeMillis() < deadline && !isSessionReady()) {
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        if (!isSessionReady() || c.connection() == null) {
+            System.out.println("[unity-travel] skipped: session did not become ready");
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Resolves the configured destination, or {@code null} when travelling is not
+     * requested.
+     */
+    private GameMap resolveTravelTarget(UnityGameState g) {
+        String requested = targetMap;
+        if (requested == null)
+            return null;
+        GameMap target = g.getStarSystem().getOrCreateMap(requested);
+        System.out.println("[unity-travel] destination '" + requested + "' resolved to map id "
+                + target.getId());
+        return target;
+    }
+
+    /**
+     * Repeats resolve-gate, walk, jump, confirm until the destination map is the
+     * current one. When {@code findNext} cannot pick a gate yet (portals still
+     * loading or no known route) it waits and retries instead of jumping blindly.
+     */
+    private void travelToMap(SessionConnector c, UnityGameState g, GameMap target) {
+        long travelDeadline = System.currentTimeMillis() + 15 * 60_000;
+        while (System.currentTimeMillis() < travelDeadline) {
+            int currentId = g.getStarSystem().getCurrentMap().getId();
+            if (currentId == target.getId()) {
+                System.out.println("[unity-travel] arrived at map " + target.getId());
+                return;
+            }
+            eu.darkbot.api.game.entities.Portal next = g.getStarSystem().findNext(target);
+            if (next == null) {
+                System.out.println("[unity-travel] no gate towards map " + target.getId()
+                        + " from map " + currentId + " (visible portals: "
+                        + visiblePortalCount(g) + "); waiting for route knowledge,"
+                        + " NOT jumping blindly");
+                dumpUnroutableState(g, currentId, target.getId());
+                if (!sleep(5_000))
+                    return;
+                continue;
+            }
+            System.out.println("[unity-travel] map " + currentId + " -> gate " + next.getId()
+                    + (next.getLocationInfo() == null ? ""
+                            : " at " + (int) next.getLocationInfo().getX() + ","
+                                    + (int) next.getLocationInfo().getY()));
+            if (!walkToPortal(g, next, 120_000))
+                return;
+            int landedOn = jumpPortalUntilMapChanges(c, g, next);
+            if (landedOn < 0)
+                return;
+        }
+        System.out.println("[unity-travel] travel deadline reached on map "
+                + g.getStarSystem().getCurrentMap().getId());
+    }
+
+    /**
+     * One-shot mechanism diagnostic kept for gate testing: nearest gate, one jump.
+     */
+    private void jumpNearestPortalOnce(SessionConnector c, UnityGameState g) {
+        eu.darkbot.api.game.entities.Portal portal = awaitNearestPortal(g, 30_000);
+        if (portal == null) {
+            System.out.println("[unity-travel] portal skipped: no portals visible");
+            return;
+        }
+        if (!walkToPortal(g, portal, 120_000))
+            return;
+        jumpPortalUntilMapChanges(c, g, portal);
+    }
+
+    /**
+     * Waits for portals to appear and returns the nearest initialized one, or null.
+     */
+    private static eu.darkbot.api.game.entities.Portal awaitNearestPortal(UnityGameState g,
+            long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            eu.darkbot.api.game.entities.Portal nearest = nearestPortal(g);
+            if (nearest != null)
+                return nearest;
+            if (!sleep(500))
+                return null;
+        }
+        return null;
+    }
+
+    private static eu.darkbot.api.game.entities.Portal nearestPortal(UnityGameState g) {
+        eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
+        double best = Double.MAX_VALUE;
+        eu.darkbot.api.game.entities.Portal nearest = null;
+        for (eu.darkbot.api.game.entities.Portal p : g.getEntities().getPortals()) {
+            if (p.getLocationInfo() == null || !p.getLocationInfo().isInitialized())
+                continue;
+            double d = here.distanceTo(p.getLocationInfo());
+            if (d < best) {
+                best = d;
+                nearest = p;
+            }
+        }
+        return nearest;
+    }
+
+    private static int visiblePortalCount(UnityGameState g) {
+        Collection<? extends eu.darkbot.api.game.entities.Portal> portals = g.getEntities()
+                .getPortals();
+        return portals == null ? 0 : portals.size();
+    }
+
+    /**
+     * Logs why no gate was selected on {@code fromMapId}: the routing graph state
+     * plus
+     * every visible portal's learned/static resolution, so a mismatch between the
+     * live
+     * gate data and the route catalog becomes visible instead of silent.
+     */
+    private void dumpUnroutableState(UnityGameState g, int fromMapId, int toMapId) {
+        System.out.println("[unity-travel] route state: "
+                + g.getStarSystem().describeRouteState(fromMapId, toMapId));
+        Collection<? extends eu.darkbot.api.game.entities.Portal> portals = g.getEntities()
+                .getPortals();
+        if (portals == null)
+            return;
+        for (eu.darkbot.api.game.entities.Portal portal : portals) {
+            if (portal == null)
+                continue;
+            eu.darkbot.api.game.other.LocationInfo loc = portal.getLocationInfo();
+            String learned = g.getStarSystem().findPortalTarget(fromMapId, portal.getId())
+                    .map(map -> "->" + map.getId()).orElse("-");
+            String resolved = loc == null || !loc.isInitialized() ? "uninitialized"
+                    : g.getStarSystem()
+                            .findStaticPortalTarget(fromMapId, portal.getTypeId(),
+                                    (int) loc.getX(), (int) loc.getY())
+                            .map(map -> "->" + map.getId()).orElse("-");
+            System.out.println("[unity-travel]   portal " + portal.getId()
+                    + " type=" + portal.getTypeId()
+                    + " pos=" + (loc == null ? "?" : (int) loc.getX() + "," + (int) loc.getY())
+                    + " learned=" + learned + " static=" + resolved);
+        }
+    }
+
+    /**
+     * Walks until within 150 units of the portal. @return false when the gate is
+     * unreachable, the session is gone or the thread was interrupted.
+     */
+    private boolean walkToPortal(UnityGameState g,
+            eu.darkbot.api.game.entities.Portal portal, long timeoutMs) {
+        eu.darkbot.api.game.other.LocationInfo loc = portal.getLocationInfo();
+        if (loc == null || !loc.isInitialized()) {
+            System.out.println("[unity-travel] gate " + portal.getId() + " has no location yet");
+            return false;
+        }
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            eu.darkbot.api.game.other.Location here = g.getMovement().getCurrentLocation();
+            if (here.distanceTo(loc) <= 150)
+                return true;
+            g.getMovement().moveTo(loc.getX(), loc.getY());
+            if (!sleep(2_000))
+                return false;
+        }
+        double remaining = g.getMovement().getCurrentLocation().distanceTo(loc);
+        System.out.println("[unity-travel] gate " + portal.getId() + " unreachable: still "
+                + (int) remaining + " units away");
+        return remaining <= 400;
+    }
+
+    /**
+     * Sends the jump repeatedly (the server drops it until its authoritative hero
+     * position reaches the gate) until the current map changes. Survives the
+     * mid-jump reconnect: {@code isSessionReady()} goes down while the connector
+     * re-logs into the destination map, so only a stopped connector aborts.
+     *
+     * @return the landed map id, or -1 when the jump was never confirmed
+     */
+    private int jumpPortalUntilMapChanges(SessionConnector c, UnityGameState g,
+            eu.darkbot.api.game.entities.Portal portal) {
+        int mapBefore = g.getStarSystem().getCurrentMap().getId();
+        long deadline = System.currentTimeMillis() + 90_000;
+        while (System.currentTimeMillis() < deadline) {
+            System.out.println("[unity-travel] jumping gate " + portal.getId()
+                    + " from map " + mapBefore);
+            g.getMovement().jumpPortal(portal);
+            if (!sleep(1_500))
+                return -1;
+            int mapNow = g.getStarSystem().getCurrentMap().getId();
+            if (mapNow != mapBefore) {
+                System.out.println("[unity-travel] jump confirmed, now on map " + mapNow);
+                return mapNow;
+            }
+            if (!c.isRunning()) {
+                System.out.println("[unity-travel] session ended during portal jump retry");
+                return -1;
+            }
+        }
+        System.out.println("[unity-travel] gate " + portal.getId()
+                + " jump not confirmed after retries");
+        return -1;
+    }
+
+    /**
+     * Sleeps uninterruptibly-enough: restores the flag and reports interruption.
+     */
+    private static boolean sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**

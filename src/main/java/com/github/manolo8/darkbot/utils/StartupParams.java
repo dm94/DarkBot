@@ -73,7 +73,7 @@ public class StartupParams implements API.Singleton {
 
     public enum PropertyKey {
         USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, GAME_SID, USER_ID, INSTANCE,
-        MINI_CLIENT, MAP_ID, CAPTURED_LOGIN_FILE, TRACE_OUTBOUND, DIAGNOSTIC_MOVE,
+        MINI_CLIENT, MAP_ID, TARGET_MAP, CAPTURED_LOGIN_FILE, TRACE_OUTBOUND, DIAGNOSTIC_MOVE,
         DIAGNOSTIC_MOVE_DISTANCE, DIAGNOSTIC_PORTAL, CAPTURE_S2C, ALLOW_STORE_SID;
 
         @Override
@@ -210,6 +210,15 @@ public class StartupParams implements API.Singleton {
         /** Initial map id to resolve in maps.php. */
         public String getMapId() {
             return getProperty(PropertyKey.MAP_ID, "mapId");
+        }
+
+        /**
+         * Destination map (numeric id or catalog name such as {@code 3-6}) for portal
+         * travel. When set, the packet travel loop routes through
+         * {@code StarSystemAPI#findNext} instead of jumping the nearest gate.
+         */
+        public String getTargetMap() {
+            return getProperty(PropertyKey.TARGET_MAP, "targetMap");
         }
 
         /** Optional path to a harness captured-login.properties file. */
