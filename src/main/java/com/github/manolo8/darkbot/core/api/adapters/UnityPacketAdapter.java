@@ -64,63 +64,90 @@ import eu.darkbot.unity.session.SessionIdentity;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.LongPredicate;
 
-
 /**
- * Packet-based API adapter (Camino A, Fase 4): runs the bot against the official Unity
- * client through the {@code unity-transport}/{@code unity-game} protocol stack instead of
+ * Packet-based API adapter (Camino A, Fase 4): runs the bot against the
+ * official Unity
+ * client through the {@code unity-transport}/{@code unity-game} protocol stack
+ * instead of
  * reading the Flash player's memory.
  *
- * <p>The adapter owns the whole Unity session: it builds a {@link SessionConnector} (portal
- * login or saved SID → map server → {@link GameConnection}) and feeds every server→client
- * frame into a {@link UnityGameState} pipeline. Outbound actions (movement, lock, attack,
- * formation, box collection) flow back through a {@link PacketSender} wired to the live
- * connection — the modules drive them through the swapped {@code eu.darkbot.api.*} managers
+ * <p>
+ * The adapter owns the whole Unity session: it builds a
+ * {@link SessionConnector} (portal
+ * login or saved SID → map server → {@link GameConnection}) and feeds every
+ * server→client
+ * frame into a {@link UnityGameState} pipeline. Outbound actions (movement,
+ * lock, attack,
+ * formation, box collection) flow back through a {@link PacketSender} wired to
+ * the live
+ * connection — the modules drive them through the swapped
+ * {@code eu.darkbot.api.*} managers
  * (see the Fase 4 DI swap in {@code DarkBotPluginApiImpl}).
  *
- * <p><b>Validity.</b> The adapter is intentionally <i>not</i> background-only: it publishes
- * the bot validity through {@link BotInstaller#invalid} so {@code Main}'s normal
- * {@code validTick()} path runs and modules tick. The legacy memory managers no-op on the
+ * <p>
+ * <b>Validity.</b> The adapter is intentionally <i>not</i> background-only: it
+ * publishes
+ * the bot validity through {@link BotInstaller#invalid} so {@code Main}'s
+ * normal
+ * {@code validTick()} path runs and modules tick. The legacy memory managers
+ * no-op on the
  * NoOp memory (their install never succeeds), and the seven address {@link
- * com.github.manolo8.darkbot.core.utils.Lazy}s are pinned to {@code 0} so {@code
- * BotInstaller#isInvalid} does not dereference null. A daemon poller flips {@code invalid}
- * to {@code false} once the session is {@link GameState#isMapActive() READY} and the hero
+ * com.github.manolo8.darkbot.core.utils.Lazy}s are pinned to {@code 0} so
+ * {@code
+ * BotInstaller#isInvalid} does not dereference null. A daemon poller flips
+ * {@code invalid}
+ * to {@code false} once the session is {@link GameState#isMapActive() READY}
+ * and the hero
  * snapshot arrived, and back to {@code true} when the session drops.
  *
- * <p><b>Credentials.</b> Either read from the {@code -login} properties file (see {@link
+ * <p>
+ * <b>Credentials.</b> Either read from the {@code -login} properties file (see
+ * {@link
  * StartupParams.AutoLoginProps}): {@code username+password}  portal login
- * ({@link BigPointPortalHandler}); {@code server+sid}  saved portal-cookie exchange;
- * or {@code gameSid+server+userId+instance}  direct restore of a raw gameserver SID
- * captured from the Unity client's LoginRequest (bypassing the portal/WAF). When no
+ * ({@link BigPointPortalHandler}); {@code server+sid}  saved portal-cookie
+ * exchange;
+ * or {@code gameSid+server+userId+instance}  direct restore of a raw
+ * gameserver SID
+ * captured from the Unity client's LoginRequest (bypassing the portal/WAF).
+ * When no
  * {@code -login} file is supplied, credentials are collected from the standard
- * {@code LoginForm} popup (portal credentials or a saved dosid). Without either, the adapter
+ * {@code LoginForm} popup (portal credentials or a saved dosid). Without
+ * either, the adapter
  * stays invalid and
  * logs the reason.
  */
-public class UnityPacketAdapter extends GameAPIImpl<
-        UnityPacketAdapter.NoOpWindow,
-        UnityPacketAdapter.NoOpHandler,
-        UnityPacketAdapter.NoOpMemory,
-        UnityPacketAdapter.NoOpExtraMemoryReader,
-        UnityPacketAdapter.NoOpInteraction,
-        UnityPacketAdapter.UnityDirectInteraction> {
+public class UnityPacketAdapter extends
+        GameAPIImpl<UnityPacketAdapter.NoOpWindow, UnityPacketAdapter.NoOpHandler, UnityPacketAdapter.NoOpMemory, UnityPacketAdapter.NoOpExtraMemoryReader, UnityPacketAdapter.NoOpInteraction, UnityPacketAdapter.UnityDirectInteraction> {
 
     /**
-     * Unity client version hash sent in the VersionRequest handshake and the LoginRequest
-     * {@code version} field (the wire value is the {@code packets.json → meta.versionHash}
-     * of the client build, not a "x.y.z" string). When the game updates, the map server
-     * rejects the old value with "Version mismatch: server version=X" — copy that X here.
-     * (2026-08-19 update: previous build hash 0994fb6e… → e160dc30…, observed from the
+     * Unity client version hash sent in the VersionRequest handshake and the
+     * LoginRequest
+     * {@code version} field (the wire value is the
+     * {@code packets.json → meta.versionHash}
+     * of the client build, not a "x.y.z" string). When the game updates, the map
+     * server
+     * rejects the old value with "Version mismatch: server version=X" — copy that X
+     * here.
+     * (2026-08-19 update: previous build hash 0994fb6e… → e160dc30…, observed from
+     * the
      * live server's VersionCommand after the client update.)
      */
     public static final String UNITY_CLIENT_VERSION = "e160dc30295f509e2405309a9e4d50fb";
     /** Initial map id (portal jumps re-resolve in a later iteration). */
     public static final int MAP_ID = 1;
-    /** How often the session state is re-published to {@code BotInstaller.invalid}. */
+    /**
+     * How often the session state is re-published to {@code BotInstaller.invalid}.
+     */
     private static final long VALIDITY_POLL_MS = 500;
 
     private volatile SessionConnector connector;
@@ -129,10 +156,14 @@ public class UnityPacketAdapter extends GameAPIImpl<
     private volatile boolean traceOutbound;
     private volatile boolean diagnosticMove;
     private volatile int diagnosticMoveDistance;
+    /** Opt-in raw server→client frame dump ({@code captureS2C} login property). */
+    private volatile OutputStream s2cCapture;
 
     private BotInstaller botInstaller;
 
-    /** Credentials/session values resolved before the asynchronous worker starts. */
+    /**
+     * Credentials/session values resolved before the asynchronous worker starts.
+     */
     private static final class SessionInput {
         final String server;
         final String username;
@@ -146,10 +177,12 @@ public class UnityPacketAdapter extends GameAPIImpl<
         final boolean traceOutbound;
         final boolean diagnosticMove;
         final int diagnosticMoveDistance;
+        final String captureS2C;
 
         SessionInput(String server, String username, String password, String dosid,
-                     String gameSid, int userId, String instance, boolean miniClient, int mapId,
-                     boolean traceOutbound, boolean diagnosticMove, int diagnosticMoveDistance) {
+                String gameSid, int userId, String instance, boolean miniClient, int mapId,
+                boolean traceOutbound, boolean diagnosticMove, int diagnosticMoveDistance,
+                String captureS2C) {
             this.server = server;
             this.username = username;
             this.password = password;
@@ -162,6 +195,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
             this.traceOutbound = traceOutbound;
             this.diagnosticMove = diagnosticMove;
             this.diagnosticMoveDistance = diagnosticMoveDistance;
+            this.captureS2C = captureS2C == null || captureS2C.trim().isEmpty()
+                    ? null
+                    : captureS2C.trim();
         }
     }
 
@@ -177,14 +213,18 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 Capability.DIRECT_REFINE,
                 Capability.DIRECT_USE_ITEM);
 
-        // Wire the components that need the adapter instance. They are static (so they can be
-        // constructed in the super() call) and lazily read this reference; their callbacks only
+        // Wire the components that need the adapter instance. They are static (so they
+        // can be
+        // constructed in the super() call) and lazily read this reference; their
+        // callbacks only
         // fire from the tick loop, long after this constructor completes.
         ((NoOpHandler) handler).adapter = this;
         ((UnityDirectInteraction) direct).adapter = this;
 
-        // Pin the memory-install addresses so BotInstaller.isInvalid()'s non-null branch
-        // evaluates with zero addresses (readLong(1344) == mainAddress(0)) instead of NPE-ing
+        // Pin the memory-install addresses so BotInstaller.isInvalid()'s non-null
+        // branch
+        // evaluates with zero addresses (readLong(1344) == mainAddress(0)) instead of
+        // NPE-ing
         // on the null Lazy values.
         botInstaller = Main.INSTANCE.pluginAPI.requireInstance(BotInstaller.class);
         botInstaller.mainApplicationAddress.send(0L);
@@ -195,7 +235,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
         botInstaller.settingsAddress.send(0L);
         botInstaller.connectionManagerAddress.send(0L);
 
-        // Build the game-state pipeline BEFORE Main's feature/drawable construction (line
+        // Build the game-state pipeline BEFORE Main's feature/drawable construction
+        // (line
         // ~182 of Main.<init>) so GUI drawables injected via getOrCreate resolve to the
         // packet-backed managers instead of the memory ones (the DI scan gives the last
         // registered instance precedence; the Unity managers are registered right here,
@@ -209,13 +250,20 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Builds the game-state pipeline (managers + event broker) and applies the Fase 4 DI
-     * swap, synchronously in the constructor. The Unity managers are registered into the
-     * plugin API singleton set so any later {@code getOrCreate}/{@code requireAPI} of the
-     * packet-backed APIs (hero, entities, star system, stats, repair, movement, attack,
-     * ore, inventory, event broker) deterministically resolves to them — "last registered
-     * wins" in {@code PluginApiImpl}'s scan. The listener decorator is re-pointed at the
-     * unity event broker, so module {@code @Subscribe} handlers receive packet-derived
+     * Builds the game-state pipeline (managers + event broker) and applies the Fase
+     * 4 DI
+     * swap, synchronously in the constructor. The Unity managers are registered
+     * into the
+     * plugin API singleton set so any later {@code getOrCreate}/{@code requireAPI}
+     * of the
+     * packet-backed APIs (hero, entities, star system, stats, repair, movement,
+     * attack,
+     * ore, inventory, event broker) deterministically resolves to them — "last
+     * registered
+     * wins" in {@code PluginApiImpl}'s scan. The listener decorator is re-pointed
+     * at the
+     * unity event broker, so module {@code @Subscribe} handlers receive
+     * packet-derived
      * events.
      */
     private void buildPipeline() {
@@ -228,13 +276,15 @@ public class UnityPacketAdapter extends GameAPIImpl<
         this.inboundReader = new PacketFieldReader(registry);
         EventBroker eventBroker = new EventBroker();
         StarSystemManager starSystem = new StarSystemManager();
-        // The core already owns the authoritative DarkBot map catalog (id, display name,
-        // short name and special-map flags). Reuse it so packet maps keep their wire id while
+        // The core already owns the authoritative DarkBot map catalog (id, display
+        // name,
+        // short name and special-map flags). Reuse it so packet maps keep their wire id
+        // while
         // presenting names such as 3-1 instead of the raw id 9.
         for (GameMap map : Main.INSTANCE.mapManager.getMaps()) {
             starSystem.registerMap(map);
-            for (com.github.manolo8.darkbot.core.entities.Portal portal
-                    : StarManager.getInstance().getStaticPortals(map.getId())) {
+            for (com.github.manolo8.darkbot.core.entities.Portal portal : StarManager.getInstance()
+                    .getStaticPortals(map.getId())) {
                 portal.getTargetMap().ifPresent(target -> starSystem.registerPortalRoute(
                         map.getId(), target.getId(), portal.getSearchType(),
                         portal.getSearchX(), portal.getSearchY()));
@@ -242,13 +292,17 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
         HeroManager hero = new HeroManager(0, starSystem, eventBroker);
         EntitiesManager entities = new EntitiesManager(eventBroker);
-        // The shared Unity modules use the public BoxInfo/NpcInfo contracts, but the packet
-        // module cannot depend on DarkBot's concrete ConfigEntity. Resolve every live entity
-        // through the active profile so collect/kill flags are applied before a module can act.
+        // The shared Unity modules use the public BoxInfo/NpcInfo contracts, but the
+        // packet
+        // module cannot depend on DarkBot's concrete ConfigEntity. Resolve every live
+        // entity
+        // through the active profile so collect/kill flags are applied before a module
+        // can act.
         entities.setConfigResolvers(
                 name -> ConfigEntity.INSTANCE.getOrCreateBoxInfo(name),
                 name -> ConfigEntity.INSTANCE.getOrCreateNpcInfo(name));
-        // Obstacle semantics (Fase 5): AVOID_MINES gates mine avoidance, AVOID_CBS gates
+        // Obstacle semantics (Fase 5): AVOID_MINES gates mine avoidance, AVOID_CBS
+        // gates
         // enemy battle-station modules; the hero faction decides which CBS are enemies.
         entities.setAvoidFlags(
                 () -> Main.INSTANCE.config.MISCELLANEOUS.AVOID_MINES,
@@ -264,32 +318,36 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 () -> Main.INSTANCE.config.MISCELLANEOUS.AVOID_RADIATION);
         game.getMovement().setPreferredZonePredicate(location -> {
             GameMap currentMap = game.getStarSystem().getCurrentMap();
-            com.github.manolo8.darkbot.config.ZoneInfo preferred =
-                    Main.INSTANCE.config.PREFERRED.get(currentMap.getId());
+            com.github.manolo8.darkbot.config.ZoneInfo preferred = Main.INSTANCE.config.PREFERRED
+                    .get(currentMap.getId());
             // An empty Flash preferred-zone grid means "no restriction", not "nowhere".
-            if (preferred == null || preferred.getZones().isEmpty()) return true;
-            eu.darkbot.api.game.other.Area.Rectangle bounds =
-                    game.getStarSystem().getCurrentMapBounds();
+            if (preferred == null || preferred.getZones().isEmpty())
+                return true;
+            eu.darkbot.api.game.other.Area.Rectangle bounds = game.getStarSystem().getCurrentMapBounds();
             double width = bounds.getX2() - bounds.getX();
             double height = bounds.getY2() - bounds.getY();
             return width <= 0 || height <= 0 || preferred.contains(
                     (location.getX() - bounds.getX()) / width,
                     (location.getY() - bounds.getY()) / height);
         });
-        // Pet (U-013): the packet PetManager reads the DarkBot PET config (enabled gate +
+        // Pet (U-013): the packet PetManager reads the DarkBot PET config (enabled gate
+        // +
         // configured gear) and falls back to it after a module gear override expires.
         game.getPet().setConfig(
                 () -> Main.INSTANCE.config.PET.ENABLED,
                 () -> Main.INSTANCE.config.PET.MODULE_ID);
         // Fuel purchase is part of the PET feature gate: when PET is enabled and the
-        // server reports an empty tank, PetManager sends the rate-limited hotkey request.
+        // server reports an empty tank, PetManager sends the rate-limited hotkey
+        // request.
         game.getPet().setAutoBuyFuel(() -> Main.INSTANCE.config.PET.ENABLED);
-        // The native selector already applies plugin priority and PET_LOCATOR/NPC priority
-        // rules. Reuse only that public selector contract; unity-game remains independent of
-        // DarkBot's feature implementation and falls back to the first wire target if the
+        // The native selector already applies plugin priority and PET_LOCATOR/NPC
+        // priority
+        // rules. Reuse only that public selector contract; unity-game remains
+        // independent of
+        // DarkBot's feature implementation and falls back to the first wire target if
+        // the
         // selector is not ready yet.
-        PetGearSelectorHandler petGearSelector =
-                Main.INSTANCE.pluginAPI.requireInstance(PetGearSelectorHandler.class);
+        PetGearSelectorHandler petGearSelector = Main.INSTANCE.pluginAPI.requireInstance(PetGearSelectorHandler.class);
         game.getPet().setLocatorPicker(picks -> selectLocatorPick(petGearSelector, picks));
         configureGroupAutomation(game.getGroup());
 
@@ -314,7 +372,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
     }
 
-    /** Route a click/drag from DarkBot's map interface without entering the Flash Drive loop. */
+    /**
+     * Route a click/drag from DarkBot's map interface without entering the Flash
+     * Drive loop.
+     */
     public void moveShipFromMapInterface(Locatable destination) {
         UnityGameState g = game;
         if (g != null && isSessionReady()) {
@@ -323,8 +384,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Unity has no Flash map event manager, so GameAPIImpl's legacy mapClick gate would
-     * reject every movement before reaching DirectInteraction. Route direct movement
+     * Unity has no Flash map event manager, so GameAPIImpl's legacy mapClick gate
+     * would
+     * reject every movement before reaching DirectInteraction. Route direct
+     * movement
      * straight to the packet manager instead of requiring a minimap click.
      */
     @Override
@@ -333,18 +396,25 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Uses a menu item directly through the packet-backed HeroItemsManager. Unlike the legacy
-     * Flash implementation this does not require the item to have a standard or premium
-     * quick-slot: the server menu id is sufficient (category-bar activation, sourceType=0).
+     * Uses a menu item directly through the packet-backed HeroItemsManager. Unlike
+     * the legacy
+     * Flash implementation this does not require the item to have a standard or
+     * premium
+     * quick-slot: the server menu id is sufficient (category-bar activation,
+     * sourceType=0).
      */
     @Override
     public boolean useItem(Item item) {
         UnityGameState g = game;
-        if (item == null || item.getId() == null || g == null || !isSessionReady()) return false;
+        if (item == null || item.getId() == null || g == null || !isSessionReady())
+            return false;
         return g.getItems().useItemId(item.getId()).isSuccessful();
     }
 
-    /** The Unity packet path supports direct item activation once the map session is ready. */
+    /**
+     * The Unity packet path supports direct item activation once the map session is
+     * ready.
+     */
     @Override
     public boolean isUseItemSupported() {
         return game != null && isSessionReady();
@@ -353,15 +423,18 @@ public class UnityPacketAdapter extends GameAPIImpl<
     /** True when the map session is live and the hero snapshot has arrived. */
     private boolean isSessionReady() {
         SessionConnector c = connector;
-        if (c == null) return false;
+        if (c == null)
+            return false;
         GameConnection conn = c.connection();
         UnityGameState g = game;
         return conn != null && conn.state().isMapActive() && g != null && g.getHero().isValid();
     }
 
     /**
-     * Whether the normal DarkBot module loop may run. The legacy GUI manager checks native
-     * memory addresses and therefore always reports false for packet sessions; using it here
+     * Whether the normal DarkBot module loop may run. The legacy GUI manager checks
+     * native
+     * memory addresses and therefore always reports false for packet sessions;
+     * using it here
      * would leave the bot connected but permanently stopped after READY.
      */
     public boolean canTickModule() {
@@ -375,44 +448,71 @@ public class UnityPacketAdapter extends GameAPIImpl<
     /**
      * The Fase 4 DI swap: in Unity mode, modules requesting these APIs get the
      * packet-backed manager instead of the memory one. {@code DarkBotPluginApiImpl}
-     * routes {@code requireAPI} calls here (the singletons {@link java.util.HashSet} scan
-     * alone would be a coin-flip, since the memory managers are registered as singletons
+     * routes {@code requireAPI} calls here (the singletons
+     * {@link java.util.HashSet} scan
+     * alone would be a coin-flip, since the memory managers are registered as
+     * singletons
      * at {@code Main} init, before this adapter exists).
      *
-     * @return the unity manager for {@code api}, or {@code null} if the session pipeline
-     *         is not up yet or the API is not packet-backed (falls back to the memory impl)
+     * @return the unity manager for {@code api}, or {@code null} if the session
+     *         pipeline
+     *         is not up yet or the API is not packet-backed (falls back to the
+     *         memory impl)
      */
     @SuppressWarnings("unchecked")
     public <T extends API> T getManager(Class<T> api) {
         UnityGameState g = game;
-        if (g == null) return null;
-        if (api == HeroAPI.class) return (T) g.getHero();
-        if (api == HeroItemsAPI.class) return (T) g.getItems();
-        if (api == GroupAPI.class) return (T) g.getGroup();
-        if (api == EntitiesAPI.class) return (T) g.getEntities();
-        if (api == StarSystemAPI.class) return (T) g.getStarSystem();
-        if (api == EventBrokerAPI.class) return (T) g.getEventBroker();
-        if (api == StatsAPI.class) return (T) g.getStats();
-        if (api == RepairAPI.class) return (T) g.getRepair();
-        if (api == OreAPI.class) return (T) g.getOres();
-        if (api == InventoryAPI.class) return (T) g.getInventory();
-        if (api == HangarAPI.class) return (T) g.getHangar();
-        if (api == MovementAPI.class) return (T) g.getMovement();
-        if (api == AttackAPI.class) return (T) g.getAttack();
-        if (api == PetAPI.class) return (T) g.getPet();
-        if (api == QuestAPI.class) return (T) g.getQuests();
-        if (api == BoosterAPI.class) return (T) g.getBooster();
-        if (api == DispatchAPI.class) return (T) g.getDispatch();
-        if (api == ShipWarpAPI.class) return (T) g.getShipWarp();
-        if (api == AssemblyAPI.class) return (T) g.getAssembly();
+        if (g == null)
+            return null;
+        if (api == HeroAPI.class)
+            return (T) g.getHero();
+        if (api == HeroItemsAPI.class)
+            return (T) g.getItems();
+        if (api == GroupAPI.class)
+            return (T) g.getGroup();
+        if (api == EntitiesAPI.class)
+            return (T) g.getEntities();
+        if (api == StarSystemAPI.class)
+            return (T) g.getStarSystem();
+        if (api == EventBrokerAPI.class)
+            return (T) g.getEventBroker();
+        if (api == StatsAPI.class)
+            return (T) g.getStats();
+        if (api == RepairAPI.class)
+            return (T) g.getRepair();
+        if (api == OreAPI.class)
+            return (T) g.getOres();
+        if (api == InventoryAPI.class)
+            return (T) g.getInventory();
+        if (api == HangarAPI.class)
+            return (T) g.getHangar();
+        if (api == MovementAPI.class)
+            return (T) g.getMovement();
+        if (api == AttackAPI.class)
+            return (T) g.getAttack();
+        if (api == PetAPI.class)
+            return (T) g.getPet();
+        if (api == QuestAPI.class)
+            return (T) g.getQuests();
+        if (api == BoosterAPI.class)
+            return (T) g.getBooster();
+        if (api == DispatchAPI.class)
+            return (T) g.getDispatch();
+        if (api == ShipWarpAPI.class)
+            return (T) g.getShipWarp();
+        if (api == AssemblyAPI.class)
+            return (T) g.getAssembly();
         return null;
     }
 
     /**
      * Starts the Unity session on a daemon worker: resolves credentials (from the
-     * {@code -login} properties or the Unity login popup, whichever the user picked;
-     * portal auto-detect may take several POSTs), builds the game-state pipeline and
-     * connector, then keeps {@code BotInstaller.invalid} in sync with the session state.
+     * {@code -login} properties or the Unity login popup, whichever the user
+     * picked;
+     * portal auto-detect may take several POSTs), builds the game-state pipeline
+     * and
+     * connector, then keeps {@code BotInstaller.invalid} in sync with the session
+     * state.
      */
     private void startSession() {
         SessionInput input = resolveCredentials();
@@ -427,6 +527,7 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 || "1".equals(System.getenv("DARKBOT_UNITY_TRACE_OUTBOUND"));
         this.diagnosticMove = input.diagnosticMove;
         this.diagnosticMoveDistance = Math.max(1, input.diagnosticMoveDistance);
+        openS2cCapture(input.captureS2C);
 
         Thread worker = new Thread(() -> {
             try {
@@ -458,9 +559,9 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     account.server = srv;
                     account.userId = input.userId;
                     account.lastMethod = "GAME_SID";
-                    SessionConnector.LoginProvider provider =
-                            new SavedSessionProvider(identity, account, UNITY_CLIENT_VERSION,
-                                    mapId, input.miniClient);
+                    SessionConnector.LoginProvider provider = new SavedSessionProvider(identity, account,
+                            UNITY_CLIENT_VERSION,
+                            mapId, input.miniClient);
                     System.out.println("[unity] Using captured gameSid directly (server=" + srv
                             + ", userId=" + input.userId + ", instance=" + input.instance
                             + ", map=" + mapId + ")");
@@ -473,7 +574,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     srv = BigPointPortalHandler.detectServer(http, usr, pwd, null);
                 }
                 if (srv == null || srv.isEmpty()) {
-                    System.out.println("[unity] No server known: set server=<universe> (login file or Unity login dialog).");
+                    System.out.println(
+                            "[unity] No server known: set server=<universe> (login file or Unity login dialog).");
                     return;
                 }
                 String lang = BigPointPortalHandler.langFor(srv);
@@ -519,12 +621,16 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Resolves the Unity session credentials: from the {@code -login} properties file when
-     * provided (headless/scripted runs), otherwise from the standard Flash login form shown
-     * on the EDT. The selected adapter then decides whether those credentials feed the Flash
+     * Resolves the Unity session credentials: from the {@code -login} properties
+     * file when
+     * provided (headless/scripted runs), otherwise from the standard Flash login
+     * form shown
+     * on the EDT. The selected adapter then decides whether those credentials feed
+     * the Flash
      * client or the Unity packet session.
      *
-     * @return the resolved portal/direct-session input, or {@code null} if the user dismissed
+     * @return the resolved portal/direct-session input, or {@code null} if the user
+     *         dismissed
      *         the dialog without providing credentials
      */
     private SessionInput resolveCredentials() {
@@ -561,7 +667,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
                     parseBooleanInt(miniClient, false), parseInt(props.getMapId(), MAP_ID),
                     parseBooleanInt(props.getTraceOutbound(), false),
                     parseBooleanInt(props.getDiagnosticMove(), false),
-                    parseInt(props.getDiagnosticMoveDistance(), 200));
+                    parseInt(props.getDiagnosticMoveDistance(), 200),
+                    props.getCaptureS2C());
         }
 
         LoginData login = LoginUtils.performUserLogin(params, true);
@@ -572,29 +679,36 @@ public class UnityPacketAdapter extends GameAPIImpl<
 
         return new SessionInput(serverFromUrl(login.getUrl()), login.getUsername(),
                 login.getPassword(), login.getSid(), null, 0, null, false,
-                MAP_ID, false, false, 200);
+                MAP_ID, false, false, 200, null);
     }
 
-    /** Converts the Flash login form's saved universe URL to the maps/session server name. */
+    /**
+     * Converts the Flash login form's saved universe URL to the maps/session server
+     * name.
+     */
     private static String serverFromUrl(String url) {
-        if (url == null || url.trim().isEmpty()) return null;
+        if (url == null || url.trim().isEmpty())
+            return null;
         String server = url.trim().toLowerCase();
         int scheme = server.indexOf("://");
-        if (scheme >= 0) server = server.substring(scheme + 3);
+        if (scheme >= 0)
+            server = server.substring(scheme + 3);
         int slash = server.indexOf('/');
-        if (slash >= 0) server = server.substring(0, slash);
+        if (slash >= 0)
+            server = server.substring(0, slash);
         if (server.endsWith(".darkorbit.com"))
             server = server.substring(0, server.length() - ".darkorbit.com".length());
         return server.isEmpty() ? null : server;
     }
 
     private static String first(String value, String fallback, String defaultValue) {
-        return value != null && !value.trim().isEmpty() ? value :
-                (fallback != null && !fallback.trim().isEmpty() ? fallback : defaultValue);
+        return value != null && !value.trim().isEmpty() ? value
+                : (fallback != null && !fallback.trim().isEmpty() ? fallback : defaultValue);
     }
 
     private static int parseInt(String value, int fallback) {
-        if (value == null || value.trim().isEmpty()) return fallback;
+        if (value == null || value.trim().isEmpty())
+            return fallback;
         try {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException e) {
@@ -603,11 +717,15 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     private static boolean parseBooleanInt(String value, boolean fallback) {
-        if (value == null || value.trim().isEmpty()) return fallback;
+        if (value == null || value.trim().isEmpty())
+            return fallback;
         return "1".equals(value.trim()) || Boolean.parseBoolean(value.trim());
     }
 
-    /** Connects Flash's persisted group policy to the transport-neutral group manager. */
+    /**
+     * Connects Flash's persisted group policy to the transport-neutral group
+     * manager.
+     */
     private static void configureGroupAutomation(GroupManager group) {
         GroupManager.Automation policy = new GroupManager.Automation();
         policy.acceptInvites = () -> Main.INSTANCE.config.GROUP.ACCEPT_INVITES;
@@ -628,12 +746,15 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Applies the active DarkBot selector to packet locator picks. Kept as a small seam so
-     * selector priority and the reload fallback can be tested without starting a live session.
+     * Applies the active DarkBot selector to packet locator picks. Kept as a small
+     * seam so
+     * selector priority and the reload fallback can be tested without starting a
+     * live session.
      */
     static PetAPI.LocatorPick selectLocatorPick(PetGearSelectorHandler handler,
-                                                 Collection<? extends PetAPI.LocatorPick> picks) {
-        if (handler == null) return null;
+            Collection<? extends PetAPI.LocatorPick> picks) {
+        if (handler == null)
+            return null;
         try {
             PetGearSupplier supplier = handler.getBestSupplier();
             return supplier == null ? null : supplier.getNpcLocatorPick(picks);
@@ -645,15 +766,20 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Starts the map-server connection on the session worker and loops publishing the
-     * session state to {@code BotInstaller.invalid} until the JVM exits. The game-state
-     * pipeline is already built ({@link #buildPipeline()} runs in the constructor); this
+     * Starts the map-server connection on the session worker and loops publishing
+     * the
+     * session state to {@code BotInstaller.invalid} until the JVM exits. The
+     * game-state
+     * pipeline is already built ({@link #buildPipeline()} runs in the constructor);
+     * this
      * only resolves the map list, connects and feeds frames into it.
      */
     private void runSession(SessionHttpClient http, SessionConnector.LoginProvider provider,
-                            SessionConnector.LoginMethod method) throws IOException {
-        // URL is resolved lazily at refresh time: the portal login (which sets the server on
-        // the provider's identity) runs only when the connector starts, after this call.
+            SessionConnector.LoginMethod method) throws IOException {
+        // URL is resolved lazily at refresh time: the portal login (which sets the
+        // server on
+        // the provider's identity) runs only when the connector starts, after this
+        // call.
         MapServerTable maps = new MapServerTable(http, () -> MapServerTable.mapsPhpUrl(serverOf(provider)));
 
         UnityGameState g = game;
@@ -661,9 +787,13 @@ public class UnityPacketAdapter extends GameAPIImpl<
         // The connector relays every server→client frame into the game-state pipeline;
         // UnityGameState learns the hero id itself (first ShipInitializationCommand).
         FrameListener listener = g;
-        if (traceOutbound) {
+        if (traceOutbound || s2cCapture != null) {
             listener = (clientToServer, payload) -> {
-                if (!clientToServer) traceInboundFrame(payload);
+                if (!clientToServer) {
+                    writeCapturedFrame(payload);
+                    if (traceOutbound)
+                        traceInboundFrame(payload);
+                }
                 g.onFrame(clientToServer, payload);
             };
         }
@@ -676,7 +806,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
         g.setPacketSender(packet -> {
             GameConnection conn = c.connection();
             if (conn == null) {
-                if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " skipped: no connection");
+                if (traceOutbound)
+                    System.out.println("[unity-c2s] " + packet.name() + " skipped: no connection");
                 return false;
             }
             try {
@@ -684,41 +815,47 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 g.onOutbound(packet);
                 if (traceOutbound) {
                     String mode = ("MoveRequest".equals(packet.name()) || "JumpRequest".equals(packet.name()))
-                            ? "[" + g.getMovement().getLastActionMode().name().toLowerCase() + "] " : "";
+                            ? "[" + g.getMovement().getLastActionMode().name().toLowerCase() + "] "
+                            : "";
                     String details = "MoveRequest".equals(packet.name()) ? " " + packet.values() : "";
                     System.out.println("[unity-c2s] " + mode + packet.name() + details + " sent");
                 }
                 return true;
             } catch (IOException | RuntimeException e) {
-                if (traceOutbound) System.out.println("[unity-c2s] " + packet.name() + " failed: " + e.getMessage());
+                if (traceOutbound)
+                    System.out.println("[unity-c2s] " + packet.name() + " failed: " + e.getMessage());
                 return false;
             }
         });
         // KillScreenRepairRequest contains the same LoginRequest module as the current
-        // connection. Binding it here is essential: sending a null nested module is rejected
-        // by PacketWriter and the Unity server ignores a repair without the session identity.
+        // connection. Binding it here is essential: sending a null nested module is
+        // rejected
+        // by PacketWriter and the Unity server ignores a repair without the session
+        // identity.
         g.getRepair().setLoginRequestSupplier(() -> {
             GameConnection connection = c.connection();
             return connection == null ? null : connection.toLoginRequest();
         });
 
-        if (diagnosticMove) startDiagnosticMove(c, g);
+        if (diagnosticMove)
+            startDiagnosticMove(c, g);
 
         long nextMetricsLog = System.currentTimeMillis() + 10_000;
         long nextUnityReviveAt = 0;
         try {
             while (true) {
                 tickUnityRepair(g, c, nextUnityReviveAt);
-                if (g.getRepair().isDestroyed()) nextUnityReviveAt = System.currentTimeMillis() + 10_000;
-                else nextUnityReviveAt = 0;
+                if (g.getRepair().isDestroyed())
+                    nextUnityReviveAt = System.currentTimeMillis() + 10_000;
+                else
+                    nextUnityReviveAt = 0;
                 g.getRepair().tryInstantRepair(g.getEntities().getStations(),
                         g.getHero().getHealth().getHp(), g.getHero().getHealth().getMaxHp(),
                         Main.INSTANCE.config.GENERAL.SAFETY.INSTANT_REPAIR);
                 // The memory PetManager's GUI tick never runs in Unity mode (Main drives
                 // tickLogic directly), so forward the module's intent (setEnabled/setGear
                 // calls on guiManager.pet) to the packet pet manager and let it act.
-                com.github.manolo8.darkbot.core.manager.PetManager memoryPet =
-                        Main.INSTANCE.guiManager.pet;
+                com.github.manolo8.darkbot.core.manager.PetManager memoryPet = Main.INSTANCE.guiManager.pet;
                 g.getPet().setEnabled(memoryPet.isEnabled());
                 g.getPet().setOverride(memoryPet.getGearOverride());
                 g.getPet().tick();
@@ -738,30 +875,71 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Runs the packet equivalent of GuiManager's death/revive branch. Unity deliberately skips
-     * the native GUI tick, so without this worker-side path a detected kill screen would remain
+     * Runs the packet equivalent of GuiManager's death/revive branch. Unity
+     * deliberately skips
+     * the native GUI tick, so without this worker-side path a detected kill screen
+     * would remain
      * destroyed forever and no KillScreenRepairRequest would be sent.
      */
     private void tickUnityRepair(UnityGameState g, SessionConnector c, long nextAttemptAt) {
-        if (!g.getRepair().isDestroyed() || System.currentTimeMillis() < nextAttemptAt) return;
+        if (!g.getRepair().isDestroyed() || System.currentTimeMillis() < nextAttemptAt)
+            return;
         GameConnection connection = c.connection();
-        if (connection == null || !connection.state().isMapActive()) return;
+        if (connection == null || !connection.state().isMapActive())
+            return;
 
         long waitMs = Math.max(0, Main.INSTANCE.config.GENERAL.SAFETY.WAIT_BEFORE_REVIVE * 1000L);
         java.time.Instant death = g.getRepair().getLastDeathTime();
         if (death != null) {
             long elapsed = java.time.Duration.between(death, java.time.Instant.now()).toMillis();
-            if (elapsed < waitMs) return;
+            if (elapsed < waitMs)
+                return;
         }
 
-        com.github.manolo8.darkbot.config.types.suppliers.ReviveLocation configured =
-                Main.INSTANCE.config.GENERAL.SAFETY.REVIVE;
-        eu.darkbot.api.game.enums.ReviveLocation location =
-                eu.darkbot.api.game.enums.ReviveLocation.valueOf(configured.name());
+        com.github.manolo8.darkbot.config.types.suppliers.ReviveLocation configured = Main.INSTANCE.config.GENERAL.SAFETY.REVIVE;
+        eu.darkbot.api.game.enums.ReviveLocation location = eu.darkbot.api.game.enums.ReviveLocation
+                .valueOf(configured.name());
         boolean sent = g.getRepair().revive(location);
         if (traceOutbound || sent) {
-            System.out.println("[unity] " + (sent ? "KillScreenRepairRequest sent" :
-                    "KillScreenRepairRequest not sent") + " location=" + location);
+            System.out.println("[unity] " + (sent ? "KillScreenRepairRequest sent" : "KillScreenRepairRequest not sent")
+                    + " location=" + location);
+        }
+    }
+
+    /**
+     * /**
+     * Opens the opt-in raw server→client frame dump given by the {@code captureS2C} login
+     * property. Frames are appended in the harness fixture format (3-byte big-endian length
+     * + payload), so the file feeds {@code unity-harness:detectDefs} directly to regenerate
+     * the packet dictionary after a server build rotates wire ids.
+     */
+    private void openS2cCapture(String path) {
+        if (path == null) return;
+        try {
+            Path file = Paths.get(path);
+            if (file.getParent() != null) Files.createDirectories(file.getParent());
+            s2cCapture = Files.newOutputStream(file, StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND, StandardOpenOption.WRITE);
+            System.out.println("[unity] Raw S2C capture -> " + file.toAbsolutePath()
+                    + " (append; feed it to unity-harness:detectDefs)");
+        } catch (IOException e) {
+            System.err.println("[unity] Could not open S2C capture " + path + ": " + e.getMessage());
+        }
+    }
+
+    /** Appends one payload to the raw capture; one failed write disables the dump, never the session. */
+    private void writeCapturedFrame(byte[] payload) {
+        OutputStream out = s2cCapture;
+        if (out == null) return;
+        try {
+            out.write((payload.length >>> 16) & 0xFF);
+            out.write((payload.length >>> 8) & 0xFF);
+            out.write(payload.length & 0xFF);
+            out.write(payload);
+            out.flush();
+        } catch (IOException e) {
+            s2cCapture = null;
+            System.err.println("[unity] S2C capture write failed, capture disabled: " + e.getMessage());
         }
     }
 
@@ -819,8 +997,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 for (Map<String, Object> elem : inboundReader.listElements("oreCountList")) {
                     Object type = elem.get("oreCountList.elem.oreType.typeValue");
                     Object value = elem.get("oreCountList.elem.count");
-                    if (value instanceof Number) oreTotal += Math.max(0, ((Number) value).longValue());
-                    if (ores.length() > 0) ores.append(',');
+                    if (value instanceof Number)
+                        oreTotal += Math.max(0, ((Number) value).longValue());
+                    if (ores.length() > 0)
+                        ores.append(',');
                     ores.append(type).append('=').append(value);
                 }
                 System.out.println("[unity-s2c] AttributeOreCountUpdateCommand oreTotal="
@@ -829,7 +1009,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
                 long collected = 0;
                 for (Map<String, Object> elem : inboundReader.listElements("contentList")) {
                     Object value = elem.get("contentList.elem.count");
-                    if (value instanceof Number) collected += Math.max(0, ((Number) value).longValue());
+                    if (value instanceof Number)
+                        collected += Math.max(0, ((Number) value).longValue());
                 }
                 System.out.println("[unity-s2c] LMCollectResourcesCommand collected=" + collected);
             } else if (isTraceableInboundAction(name)) {
@@ -877,15 +1058,20 @@ public class UnityPacketAdapter extends GameAPIImpl<
                         break;
                 }
             } else {
-                // Diagnostic mode logs packet names only; never dump arbitrary fields or SID data.
+                // Diagnostic mode logs packet names only; never dump arbitrary fields or SID
+                // data.
                 System.out.println("[unity-s2c] packet=" + name);
             }
         } catch (IllegalArgumentException ignored) {
-            // The game-state pipeline owns malformed-frame handling; tracing must not affect it.
+            // The game-state pipeline owns malformed-frame handling; tracing must not
+            // affect it.
         }
     }
 
-    /** Action confirmations whose fields are useful for a packet-only live diagnosis. */
+    /**
+     * Action confirmations whose fields are useful for a packet-only live
+     * diagnosis.
+     */
     static boolean isTraceableInboundAction(String name) {
         switch (name) {
             case "RemoveCollectableCommand":
@@ -904,8 +1090,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
     }
 
     /**
-     * Sends one controlled movement after the live hero snapshot arrives. This is deliberately
-     * opt-in and exists only to separate packet transport from module target-selection logic.
+     * Sends one controlled movement after the live hero snapshot arrives. This is
+     * deliberately
+     * opt-in and exists only to separate packet transport from module
+     * target-selection logic.
      */
     private void startDiagnosticMove(SessionConnector c, UnityGameState g) {
         Thread move = new Thread(() -> {
@@ -926,7 +1114,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
             double distance = Math.max(1, diagnosticMoveDistance);
             double targetX = from.getX() + distance;
             double targetY = from.getY();
-            if (!g.getMovement().canMove(targetX, targetY)) targetX = from.getX() - distance;
+            if (!g.getMovement().canMove(targetX, targetY))
+                targetX = from.getX() - distance;
             if (!g.getMovement().canMove(targetX, targetY)) {
                 System.out.println("[unity-diagnostic] move skipped: no valid target from " + from);
                 return;
@@ -939,12 +1128,17 @@ public class UnityPacketAdapter extends GameAPIImpl<
         move.start();
     }
 
-    /** Derives the game server for the maps URL from the provider's session identity. */
+    /**
+     * Derives the game server for the maps URL from the provider's session
+     * identity.
+     */
     private static String serverOf(SessionConnector.LoginProvider provider) {
-        // SavedSessionProvider and PortalLoginProvider both keep the server in the identity;
+        // SavedSessionProvider and PortalLoginProvider both keep the server in the
+        // identity;
         // fall back to a placeholder only if the session block never surfaced it.
         SessionIdentity identity = provider instanceof SavedSessionProvider || provider instanceof PortalLoginProvider
-                ? identityOf(provider) : null;
+                ? identityOf(provider)
+                : null;
         return identity != null && identity.getServer() != null ? identity.getServer() : "s1";
     }
 
@@ -972,7 +1166,10 @@ public class UnityPacketAdapter extends GameAPIImpl<
         };
     }
 
-    /* ------------------------------ no-op components ------------------------------ */
+    /*
+     * ------------------------------ no-op components
+     * ------------------------------
+     */
 
     public static class NoOpWindow implements GameAPI.Window {
         @Override
@@ -985,9 +1182,15 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
     }
 
-    /** Handler validity = the Unity map session being live and the hero snapshot present. */
+    /**
+     * Handler validity = the Unity map session being live and the hero snapshot
+     * present.
+     */
     public static class NoOpHandler implements GameAPI.Handler {
-        /** The owning adapter; assigned right after construction. Null-checked on every use. */
+        /**
+         * The owning adapter; assigned right after construction. Null-checked on every
+         * use.
+         */
         volatile UnityPacketAdapter adapter;
 
         @Override
@@ -1056,34 +1259,44 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
 
         @Override
-        public void readBytes(long address, byte[] buff, int length) {}
+        public void readBytes(long address, byte[] buff, int length) {
+        }
 
         @Override
-        public void replaceInt(long address, int oldValue, int newValue) {}
+        public void replaceInt(long address, int oldValue, int newValue) {
+        }
 
         @Override
-        public void replaceLong(long address, long oldValue, long newValue) {}
+        public void replaceLong(long address, long oldValue, long newValue) {
+        }
 
         @Override
-        public void replaceDouble(long address, double oldValue, double newValue) {}
+        public void replaceDouble(long address, double oldValue, double newValue) {
+        }
 
         @Override
-        public void replaceBoolean(long address, boolean oldValue, boolean newValue) {}
+        public void replaceBoolean(long address, boolean oldValue, boolean newValue) {
+        }
 
         @Override
-        public void writeInt(long address, int value) {}
+        public void writeInt(long address, int value) {
+        }
 
         @Override
-        public void writeLong(long address, long value) {}
+        public void writeLong(long address, long value) {
+        }
 
         @Override
-        public void writeDouble(long address, double value) {}
+        public void writeDouble(long address, double value) {
+        }
 
         @Override
-        public void writeBoolean(long address, boolean value) {}
+        public void writeBoolean(long address, boolean value) {
+        }
 
         @Override
-        public void writeBytes(long address, byte... bytes) {}
+        public void writeBytes(long address, byte... bytes) {
+        }
 
         @Override
         public long[] queryInt(int value, int maxSize) {
@@ -1118,7 +1331,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
 
         @Override
-        public void resetCache() {}
+        public void resetCache() {
+        }
     }
 
     public static class NoOpInteraction implements GameAPI.Interaction {
@@ -1128,27 +1342,38 @@ public class UnityPacketAdapter extends GameAPIImpl<
         }
 
         @Override
-        public void keyClick(int keyCode) {}
+        public void keyClick(int keyCode) {
+        }
 
         @Override
-        public void sendText(String text) {}
+        public void sendText(String text) {
+        }
 
         @Override
-        public void mouseMove(int x, int y) {}
+        public void mouseMove(int x, int y) {
+        }
 
         @Override
-        public void mouseDown(int x, int y) {}
+        public void mouseDown(int x, int y) {
+        }
 
         @Override
-        public void mouseUp(int x, int y) {}
+        public void mouseUp(int x, int y) {
+        }
 
         @Override
-        public void mouseClick(int x, int y) {}
+        public void mouseClick(int x, int y) {
+        }
     }
 
-    /** The legacy memory action seam: movement routes to the Unity movement manager. */
+    /**
+     * The legacy memory action seam: movement routes to the Unity movement manager.
+     */
     public static class UnityDirectInteraction implements GameAPI.DirectInteraction {
-        /** The owning adapter; assigned right after construction. Null-checked on every use. */
+        /**
+         * The owning adapter; assigned right after construction. Null-checked on every
+         * use.
+         */
         volatile UnityPacketAdapter adapter;
 
         @Override
@@ -1171,7 +1396,8 @@ public class UnityPacketAdapter extends GameAPIImpl<
         @Override
         public void moveShip(Locatable destination) {
             UnityPacketAdapter a = adapter;
-            if (a != null) a.moveShipUnity(destination);
+            if (a != null)
+                a.moveShipUnity(destination);
         }
 
         @Override

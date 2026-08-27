@@ -66,7 +66,7 @@ public class StartupParams implements API.Singleton {
     public enum PropertyKey {
         USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, GAME_SID, USER_ID, INSTANCE,
         MINI_CLIENT, MAP_ID, CAPTURED_LOGIN_FILE, TRACE_OUTBOUND, DIAGNOSTIC_MOVE,
-        DIAGNOSTIC_MOVE_DISTANCE, ALLOW_STORE_SID;
+        DIAGNOSTIC_MOVE_DISTANCE, CAPTURE_S2C, ALLOW_STORE_SID;
         @Override
         public String toString() {
             return this.name().toLowerCase(Locale.ROOT);
@@ -218,6 +218,14 @@ public class StartupParams implements API.Singleton {
         /** Distance in map units for the one-shot diagnostic movement. */
         public String getDiagnosticMoveDistance() {
             return getProperty(PropertyKey.DIAGNOSTIC_MOVE_DISTANCE, "diagnosticMoveDistance");
+        }
+
+        /**
+         * Optional path for a raw server→client frame dump (3-byte framed fixture format),
+         * used to regenerate the packet dictionary with {@code unity-harness:detectDefs}.
+         */
+        public String getCaptureS2C() {
+            return getProperty(PropertyKey.CAPTURE_S2C, "captureS2C");
         }
 
         public boolean isAllowStoreSID() {
