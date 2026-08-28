@@ -35,6 +35,7 @@ import eu.darkbot.api.managers.PetAPI;
 import eu.darkbot.api.managers.QuestAPI;
 import eu.darkbot.api.managers.RepairAPI;
 import eu.darkbot.api.managers.ShipWarpAPI;
+import eu.darkbot.api.managers.SkylabAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
 import eu.darkbot.api.managers.StatsAPI;
 import eu.darkbot.unity.codec.PacketDef;
@@ -559,6 +560,8 @@ public class UnityPacketAdapter extends
             return (T) g.getInventory();
         if (api == HangarAPI.class)
             return (T) g.getHangar();
+        if (api == SkylabAPI.class)
+            return (T) g.getSkylab();
         if (api == MovementAPI.class)
             return (T) g.getMovement();
         if (api == AttackAPI.class)

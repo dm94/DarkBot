@@ -4,6 +4,7 @@ import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.config.ColorScheme;
 import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.ConfigEntity;
+import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.utils.Lazy;
 import com.github.manolo8.darkbot.extensions.features.Feature;
 import com.github.manolo8.darkbot.extensions.features.FeatureRegistry;
@@ -150,7 +151,8 @@ public class ExtraButton extends TitleBarButton<JFrame> {
                 main.repairManager.resetDeaths();
             }));
 
-            if (OSUtil.isWindows()) {
+            boolean loginSupported = Main.API.hasCapability(Capability.LOGIN);
+            if (loginSupported && OSUtil.isWindows()) {
                 list.add(create("Open Hangar", e -> {
                     JComponent component = (JComponent) e.getSource();
                     component.setEnabled(false);

@@ -46,6 +46,7 @@ public class KekkaPlayerAdapter extends GameAPIImpl<
                 di,
                 Capability.LOGIN,
                 Capability.INITIALLY_SHOWN,
+                Capability.SHOW_GAME,
                 Capability.CREATE_WINDOW_THREAD,
                 Capability.DIRECT_LIMIT_FPS,
                 Capability.HANDLER_GAME_QUALITY,

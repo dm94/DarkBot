@@ -4,6 +4,7 @@ public enum Capability {
     LOGIN,
     ATTACH,
     INITIALLY_SHOWN,
+    SHOW_GAME,
     CREATE_WINDOW_THREAD,
     BACKGROUND_ONLY,
 
