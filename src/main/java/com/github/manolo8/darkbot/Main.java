@@ -1,5 +1,6 @@
 package com.github.manolo8.darkbot;
 
+import com.github.manolo8.darkbot.backpage.AuctionModule;
 import com.github.manolo8.darkbot.backpage.BackpageManager;
 import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.ConfigHandler;
@@ -51,6 +52,7 @@ import eu.darkbot.api.extensions.Configurable;
 import eu.darkbot.api.extensions.Installable;
 import eu.darkbot.api.extensions.Module;
 import eu.darkbot.api.extensions.TemporalModule;
+import eu.darkbot.api.extensions.backpage.BackpageModuleRegistry;
 import eu.darkbot.api.game.other.Lockable;
 import eu.darkbot.api.managers.BotAPI;
 import eu.darkbot.api.managers.EventBrokerAPI;
@@ -160,6 +162,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.pluginHandler   = pluginAPI.requireInstance(PluginHandler.class);
         this.pluginUpdater   = pluginAPI.requireInstance(PluginUpdater.class);
         this.backpage        = pluginAPI.requireInstance(BackpageManager.class);
+        pluginAPI.requireAPI(BackpageModuleRegistry.class)
+                .register(pluginAPI.requireInstance(AuctionModule.class));
         this.featureRegistry = pluginAPI.requireInstance(FeatureRegistry.class);
         this.repairManager   = pluginAPI.requireInstance(RepairManager.class);
         this.botInstaller = pluginAPI.requireInstance(BotInstaller.class);

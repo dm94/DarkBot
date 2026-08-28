@@ -29,6 +29,10 @@ public class AuctionManager {
         return data;
     }
 
+    public boolean isSolvingCaptcha() {
+        return captchaHandler.isSolvingCaptcha();
+    }
+
     @Deprecated
     public Boolean update(int expiryTime) {
         return this.update((long) expiryTime);
