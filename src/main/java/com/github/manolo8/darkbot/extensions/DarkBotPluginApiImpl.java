@@ -2,6 +2,7 @@ package com.github.manolo8.darkbot.extensions;
 
 import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.backpage.BackpageManager;
+import com.github.manolo8.darkbot.backpage.BackpageModuleRegistryImpl;
 import com.github.manolo8.darkbot.backpage.FlashResManager;
 import com.github.manolo8.darkbot.backpage.NativeBrowserImpl;
 import com.github.manolo8.darkbot.config.ConfigHandler;
@@ -32,6 +33,7 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
         addInstance(main, main.params, StarManager.getInstance(), main.configManager);
         addImplementations(
                 BackpageManager.class,
+                BackpageModuleRegistryImpl.class,
                 EntityList.class,
                 EventBroker.class,
                 FeatureRegistry.class,
