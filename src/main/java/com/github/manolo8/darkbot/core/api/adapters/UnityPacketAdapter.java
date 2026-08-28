@@ -149,6 +149,8 @@ public class UnityPacketAdapter extends
      * How often the session state is re-published to {@code BotInstaller.invalid}.
      */
     private static final long VALIDITY_POLL_MS = 500;
+    /** Interval between unity revive attempts while the kill screen is up. */
+    private static final long REVIVE_RETRY_MS = 10_000;
 
     private volatile SessionConnector connector;
     private volatile UnityGameState game;
@@ -879,11 +881,7 @@ public class UnityPacketAdapter extends
         long nextUnityReviveAt = 0;
         try {
             while (true) {
-                tickUnityRepair(g, c, nextUnityReviveAt);
-                if (g.getRepair().isDestroyed())
-                    nextUnityReviveAt = System.currentTimeMillis() + 10_000;
-                else
-                    nextUnityReviveAt = 0;
+                nextUnityReviveAt = tickUnityRepair(g, c, nextUnityReviveAt);
                 g.getRepair().tryInstantRepair(g.getEntities().getStations(),
                         g.getHero().getHealth().getHp(), g.getHero().getHealth().getMaxHp(),
                         Main.INSTANCE.config.GENERAL.SAFETY.INSTANT_REPAIR);
@@ -915,20 +913,29 @@ public class UnityPacketAdapter extends
      * the native GUI tick, so without this worker-side path a detected kill screen
      * would remain
      * destroyed forever and no KillScreenRepairRequest would be sent.
+     *
+     * @param nextAttemptAt earliest timestamp for the next revive attempt
+     * @return the updated earliest next attempt time; 0 once the hero is alive
+     *         again
      */
-    private void tickUnityRepair(UnityGameState g, SessionConnector c, long nextAttemptAt) {
-        if (!g.getRepair().isDestroyed() || System.currentTimeMillis() < nextAttemptAt)
-            return;
+    private long tickUnityRepair(UnityGameState g, SessionConnector c, long nextAttemptAt) {
+        if (!g.getRepair().isDestroyed())
+            return 0;
+
+        long now = System.currentTimeMillis();
+        if (now < nextAttemptAt)
+            return nextAttemptAt;
+
         GameConnection connection = c.connection();
         if (connection == null || !connection.state().isMapActive())
-            return;
+            return nextAttemptAt;
 
         long waitMs = Math.max(0, Main.INSTANCE.config.GENERAL.SAFETY.WAIT_BEFORE_REVIVE * 1000L);
         java.time.Instant death = g.getRepair().getLastDeathTime();
         if (death != null) {
             long elapsed = java.time.Duration.between(death, java.time.Instant.now()).toMillis();
             if (elapsed < waitMs)
-                return;
+                return nextAttemptAt;
         }
 
         com.github.manolo8.darkbot.config.types.suppliers.ReviveLocation configured = Main.INSTANCE.config.GENERAL.SAFETY.REVIVE;
@@ -939,6 +946,10 @@ public class UnityPacketAdapter extends
             System.out.println("[unity] " + (sent ? "KillScreenRepairRequest sent" : "KillScreenRepairRequest not sent")
                     + " location=" + location);
         }
+        // Re-evaluate periodically: a sent request stays pending until the server
+        // confirms the revive with a fresh ship initialization, and a rejected one
+        // (option cooldown) may succeed on a later attempt.
+        return now + REVIVE_RETRY_MS;
     }
 
     /**
