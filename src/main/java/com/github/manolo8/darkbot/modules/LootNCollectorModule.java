@@ -5,12 +5,13 @@ import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.NpcExtra;
 import com.github.manolo8.darkbot.core.entities.Box;
 import com.github.manolo8.darkbot.core.entities.Npc;
+import com.github.manolo8.darkbot.core.itf.FlashDependent;
 import com.github.manolo8.darkbot.core.itf.Module;
 import com.github.manolo8.darkbot.core.manager.HeroManager;
-import com.github.manolo8.darkbot.core.manager.PetManager;
 import com.github.manolo8.darkbot.core.utils.Drive;
 import com.github.manolo8.darkbot.extensions.features.Feature;
 import com.github.manolo8.darkbot.utils.I18n;
+import eu.darkbot.api.managers.PetAPI;
 
 /**
  * @deprecated Use {@link eu.darkbot.shared.modules.LootCollectorModule}
@@ -18,12 +19,12 @@ import com.github.manolo8.darkbot.utils.I18n;
 @Deprecated(forRemoval = true)
 @SuppressWarnings("removal")
 @Feature(name = "Kill & Collect (Legacy)", description = "Kills npcs and collects resources at the same time.")
-public class LootNCollectorModule implements Module {
+public class LootNCollectorModule implements Module, FlashDependent {
 
     protected LootModule lootModule = new LootModule();
     protected CollectorModule collectorModule = new CollectorModule();
 
-    protected PetManager pet;
+    protected PetAPI pet;
     protected HeroManager hero;
     protected Drive drive;
     protected Config config;
@@ -33,7 +34,7 @@ public class LootNCollectorModule implements Module {
         lootModule.install(main);
         collectorModule.install(main);
 
-        this.pet = main.guiManager.pet;
+        this.pet = main.pluginAPI.requireAPI(PetAPI.class);
         this.hero = main.hero;
         this.drive = main.hero.drive;
         this.config = main.config;

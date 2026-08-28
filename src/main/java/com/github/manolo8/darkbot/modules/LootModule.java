@@ -5,6 +5,7 @@ import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.NpcExtra;
 import com.github.manolo8.darkbot.core.entities.Npc;
 import com.github.manolo8.darkbot.core.entities.Ship;
+import com.github.manolo8.darkbot.core.itf.FlashDependent;
 import com.github.manolo8.darkbot.core.itf.Module;
 import com.github.manolo8.darkbot.core.manager.EffectManager;
 import com.github.manolo8.darkbot.core.manager.HeroManager;
@@ -13,6 +14,7 @@ import com.github.manolo8.darkbot.core.utils.Location;
 import com.github.manolo8.darkbot.extensions.features.Feature;
 import com.github.manolo8.darkbot.modules.utils.NpcAttacker;
 import com.github.manolo8.darkbot.modules.utils.SafetyFinder;
+import eu.darkbot.api.managers.PetAPI;
 
 import java.util.Comparator;
 import java.util.List;
@@ -26,7 +28,7 @@ import static java.lang.Math.random;
 @Deprecated(forRemoval = true)
 @SuppressWarnings("removal")
 @Feature(name = "Npc Killer (Legacy)", description = "Npc-only module. Will never pick up resources.")
-public class LootModule implements Module {
+public class LootModule implements Module, FlashDependent {
 
     private Main main;
 
@@ -37,6 +39,8 @@ public class LootModule implements Module {
     private Drive drive;
 
     private Config config;
+
+    private PetAPI pet;
 
     protected NpcAttacker attack;
     protected SafetyFinder safety;
@@ -54,6 +58,7 @@ public class LootModule implements Module {
         this.ships = main.mapManager.entities.ships;
         this.npcs = main.mapManager.entities.npcs;
         this.config = main.config;
+        this.pet = main.pluginAPI.requireAPI(PetAPI.class);
     }
 
     @Override
@@ -76,7 +81,7 @@ public class LootModule implements Module {
     @Override
     public void tick() {
         if (checkDangerousAndCurrentMap()) {
-            main.guiManager.pet.setEnabled(true);
+            pet.setEnabled(true);
 
             if (findTarget()) {
                 moveToAnSafePosition();

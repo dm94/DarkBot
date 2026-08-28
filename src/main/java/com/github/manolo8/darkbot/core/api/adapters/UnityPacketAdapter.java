@@ -516,6 +516,12 @@ public class UnityPacketAdapter extends
         return c != null && c.requestRelogin();
     }
 
+    @Override
+    public boolean disconnect() {
+        SessionConnector c = connector;
+        return c != null && c.disconnect();
+    }
+
     /**
      * Whether the normal DarkBot module loop may run. The legacy GUI manager checks
      * native
@@ -1645,7 +1651,8 @@ public class UnityPacketAdapter extends
 
         @Override
         public void reload() {
-            System.out.println("[unity] refresh requested — the packet session reconnects on its own");
+            UnityPacketAdapter a = adapter;
+            if (a != null) a.requestRelogin();
         }
 
         @Override

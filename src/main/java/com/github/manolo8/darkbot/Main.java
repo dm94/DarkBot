@@ -13,6 +13,7 @@ import com.github.manolo8.darkbot.core.IDarkBotAPI;
 import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.api.InvalidNativeSignature;
 import com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter;
+import com.github.manolo8.darkbot.core.itf.FlashDependent;
 import com.github.manolo8.darkbot.core.manager.EffectManager;
 import com.github.manolo8.darkbot.core.manager.FacadeManager;
 import com.github.manolo8.darkbot.core.manager.GuiManager;
@@ -441,6 +442,11 @@ public class Main extends Thread implements PluginListener, BotAPI {
                     Popups.of("Error", I18n.get("bot.issue.module_load_failed", name), JOptionPane.ERROR_MESSAGE).showAsync();
                     return new DummyModule();
                 });
+            if (module instanceof FlashDependent && API instanceof UnityPacketAdapter) {
+                String name = moduleId.substring(moduleId.lastIndexOf(".") + 1);
+                Popups.of("Error", I18n.get("bot.issue.module_flash_only", name), JOptionPane.ERROR_MESSAGE).showAsync();
+                module = new DummyModule();
+            }
             setModule(module, true);
         }
     }

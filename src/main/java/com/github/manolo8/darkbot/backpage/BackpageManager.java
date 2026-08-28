@@ -327,6 +327,11 @@ public class BackpageManager extends Thread implements BackpageAPI, SessionAPI {
         return true;
     }
 
+    @Override
+    public boolean disconnect() {
+        return false;
+    }
+
     private enum Status {
         UNKNOWN("?"),
         NO_SID("--"),

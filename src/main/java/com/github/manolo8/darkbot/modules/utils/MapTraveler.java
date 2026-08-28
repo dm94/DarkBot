@@ -5,6 +5,7 @@ import com.github.manolo8.darkbot.core.entities.Portal;
 import com.github.manolo8.darkbot.core.manager.HeroManager;
 import com.github.manolo8.darkbot.core.manager.StarManager;
 import com.github.manolo8.darkbot.core.objects.Map;
+import eu.darkbot.api.managers.PetAPI;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -15,6 +16,7 @@ public class MapTraveler {
     private final HeroManager hero;
     private final List<Portal> portals;
     private final StarManager star;
+    private final PetAPI pet;
     private final Consumer<Map> listener = this::onMapChange;
     protected PortalJumper jumper;
 
@@ -29,6 +31,7 @@ public class MapTraveler {
         this.portals = main.mapManager.entities.portals;
         this.star = main.starManager;
         this.main = main;
+        this.pet = main.pluginAPI.requireAPI(PetAPI.class);
         this.jumper = new PortalJumper(hero);
         main.mapManager.mapChange.add(listener);
     }
@@ -73,7 +76,7 @@ public class MapTraveler {
         shipTpWait = mapChangeWait = -1;
 
         if (current.locationInfo.distance(hero) > 1500) // Portal very close, no need to disable pet
-            main.guiManager.pet.setEnabled(false);
+            pet.setEnabled(false);
         hero.runMode();
 
         jumper.travelAndJump(current);
