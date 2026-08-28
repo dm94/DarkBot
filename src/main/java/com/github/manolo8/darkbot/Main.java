@@ -165,7 +165,8 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.eventBroker = pluginAPI.requireAPI(EventBrokerAPI.class);
 
         API = configManager.getAPI(pluginAPI);
-        API.setSize(config.BOT_SETTINGS.API_CONFIG.width, config.BOT_SETTINGS.API_CONFIG.height);
+        if (API.hasCapability(Capability.SHOW_GAME))
+            API.setSize(config.BOT_SETTINGS.API_CONFIG.width, config.BOT_SETTINGS.API_CONFIG.height);
         pluginAPI.addInstance(API);
 
         this.performanceManager = pluginAPI.requireInstance(PerformanceManager.class);

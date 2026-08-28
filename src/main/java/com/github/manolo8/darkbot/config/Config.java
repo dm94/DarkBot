@@ -233,7 +233,7 @@ public class Config implements eu.darkbot.api.config.legacy.Config {
         public @Option @Visibility(Level.ADVANCED) APIConfig API_CONFIG = new APIConfig();
         public static class APIConfig {
             public @Option @Dropdown BrowserApi BROWSER_API = OSUtil.getDefaultAPI();
-            public @Option boolean FULLY_HIDE_API = true;
+            public @Option @Visibility(Level.DEVELOPER) boolean FULLY_HIDE_API = true;
             public @Option boolean FORCE_GAME_LANGUAGE = false;
             public @Option boolean ENFORCE_HW_ACCEL = true;
             public @Option boolean USE_3D = false;

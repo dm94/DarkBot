@@ -127,7 +127,7 @@ public class StatsManager implements Manager, StatsAPI, NativeUpdatable {
     private boolean tickUnityStats() {
         if (!(API instanceof UnityPacketAdapter)) return false;
 
-        eu.darkbot.unity.game.StatsManager unity = (eu.darkbot.unity.game.StatsManager)
+        eu.darkbot.unity.game.UnityStatsManager unity = (eu.darkbot.unity.game.UnityStatsManager)
                 ((UnityPacketAdapter) API).getManager(StatsAPI.class);
         if (unity == null) return false; // session pipeline not up yet
 

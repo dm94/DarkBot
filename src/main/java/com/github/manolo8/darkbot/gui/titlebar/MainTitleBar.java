@@ -21,7 +21,8 @@ public class MainTitleBar extends JMenuBar implements SimpleMouseListener {
         add(new ConfigButton(frame));
         add(new StatsButton(main, frame));
         add(new StartButton(main, frame));
-        add(new BackpageButton(main, frame));
+        if (Main.API.hasCapability(Capability.LOGIN))
+            add(new BackpageButton(main, frame));
 
         add(titleFiller);
         add(DiagnosticBar.create(main, frame));

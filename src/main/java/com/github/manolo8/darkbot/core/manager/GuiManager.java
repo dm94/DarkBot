@@ -240,7 +240,6 @@ public class GuiManager implements Manager, GameScreenAPI {
 
         if (repairManager.tryRevive()) {
             lastRepairAttempt = System.currentTimeMillis();
-            if (main.config.MISCELLANEOUS.DRONE_REPAIR_PERCENTAGE != 0) this.main.backpage.checkDronesAfterKill();
         } else return false;
 
         return true;

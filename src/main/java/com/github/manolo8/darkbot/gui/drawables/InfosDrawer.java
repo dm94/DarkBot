@@ -1,6 +1,7 @@
 package com.github.manolo8.darkbot.gui.drawables;
 
 import com.github.manolo8.darkbot.Main;
+import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.entities.Npc;
 import com.github.manolo8.darkbot.extensions.features.Feature;
 import com.github.manolo8.darkbot.utils.I18n;
@@ -115,7 +116,8 @@ public class InfosDrawer implements Drawable {
             }
         }
 
-        mg.drawString(mg.getWidth() - 5, 12, "SID: " + main.backpage.sidStatus(), MapGraphics.StringAlign.RIGHT);
+        if (Main.API.hasCapability(Capability.LOGIN))
+            mg.drawString(mg.getWidth() - 5, 12, "SID: " + main.backpage.sidStatus(), MapGraphics.StringAlign.RIGHT);
     }
 
     public void drawMap(MapGraphics mg) {

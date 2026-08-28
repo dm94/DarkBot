@@ -34,6 +34,7 @@ import eu.darkbot.api.managers.OreAPI;
 import eu.darkbot.api.managers.PetAPI;
 import eu.darkbot.api.managers.QuestAPI;
 import eu.darkbot.api.managers.RepairAPI;
+import eu.darkbot.api.managers.SessionAPI;
 import eu.darkbot.api.managers.ShipWarpAPI;
 import eu.darkbot.api.managers.SkylabAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
@@ -43,13 +44,13 @@ import eu.darkbot.unity.codec.PacketFieldReader;
 import eu.darkbot.unity.codec.PacketRegistry;
 import eu.darkbot.unity.game.EntitiesManager;
 import eu.darkbot.unity.game.EventBroker;
-import eu.darkbot.unity.game.HeroManager;
-import eu.darkbot.unity.game.GroupManager;
+import eu.darkbot.unity.game.UnityHeroManager;
+import eu.darkbot.unity.game.UnityGroupManager;
 import eu.darkbot.unity.game.InventoryManager;
 import eu.darkbot.unity.game.OreManager;
-import eu.darkbot.unity.game.RepairManager;
+import eu.darkbot.unity.game.UnityRepairManager;
 import eu.darkbot.unity.game.StarSystemManager;
-import eu.darkbot.unity.game.StatsManager;
+import eu.darkbot.unity.game.UnityStatsManager;
 import eu.darkbot.unity.game.UnityGameState;
 import eu.darkbot.unity.net.FrameListener;
 import eu.darkbot.unity.net.PacketSender;
@@ -129,7 +130,7 @@ import java.util.function.LongPredicate;
  * logs the reason.
  */
 public class UnityPacketAdapter extends
-        GameAPIImpl<UnityPacketAdapter.NoOpWindow, UnityPacketAdapter.NoOpHandler, UnityPacketAdapter.NoOpMemory, UnityPacketAdapter.NoOpExtraMemoryReader, UnityPacketAdapter.NoOpInteraction, UnityPacketAdapter.UnityDirectInteraction> {
+        GameAPIImpl<UnityPacketAdapter.NoOpWindow, UnityPacketAdapter.NoOpHandler, UnityPacketAdapter.NoOpMemory, UnityPacketAdapter.NoOpExtraMemoryReader, UnityPacketAdapter.NoOpInteraction, UnityPacketAdapter.UnityDirectInteraction> implements SessionAPI {
 
     /**
      * Fallback Unity client version hash, sent in the VersionRequest handshake and
@@ -330,7 +331,7 @@ public class UnityPacketAdapter extends
                         portal.getSearchX(), portal.getSearchY()));
             }
         }
-        HeroManager hero = new HeroManager(0, starSystem, eventBroker);
+        UnityHeroManager hero = new UnityHeroManager(0, starSystem, eventBroker);
         EntitiesManager entities = new EntitiesManager(eventBroker);
         // The shared Unity modules use the public BoxInfo/NpcInfo contracts, but the
         // packet
@@ -348,10 +349,10 @@ public class UnityPacketAdapter extends
                 () -> Main.INSTANCE.config.MISCELLANEOUS.AVOID_MINES,
                 () -> Main.INSTANCE.config.MISCELLANEOUS.AVOID_CBS);
         entities.setHeroFaction(() -> hero.entityInfo().getFaction());
-        StatsManager stats = new StatsManager(eventBroker);
+        UnityStatsManager stats = new UnityStatsManager(eventBroker);
         OreManager ores = new OreManager();
         InventoryManager inventory = new InventoryManager(ores);
-        RepairManager repair = new RepairManager();
+        UnityRepairManager repair = new UnityRepairManager();
         this.game = new UnityGameState(registry, eventBroker, starSystem, hero, entities, 0,
                 stats, repair, ores, inventory);
         game.getMovement().setAvoidRadiation(
@@ -370,14 +371,14 @@ public class UnityPacketAdapter extends
                     (location.getX() - bounds.getX()) / width,
                     (location.getY() - bounds.getY()) / height);
         });
-        // Pet (U-013): the packet PetManager reads the DarkBot PET config (enabled gate
+        // Pet (U-013): the packet UnityPetManager reads the DarkBot PET config (enabled gate
         // +
         // configured gear) and falls back to it after a module gear override expires.
         game.getPet().setConfig(
                 () -> Main.INSTANCE.config.PET.ENABLED,
                 () -> Main.INSTANCE.config.PET.MODULE_ID);
         // Fuel purchase is part of the PET feature gate: when PET is enabled and the
-        // server reports an empty tank, PetManager sends the rate-limited hotkey
+        // server reports an empty tank, UnityPetManager sends the rate-limited hotkey
         // request.
         game.getPet().setAutoBuyFuel(() -> Main.INSTANCE.config.PET.ENABLED);
         // The native selector already applies plugin priority and PET_LOCATOR/NPC
@@ -504,6 +505,17 @@ public class UnityPacketAdapter extends
         return conn != null && conn.state().isMapActive() && g != null && g.getHero().isValid();
     }
 
+    @Override
+    public boolean isSessionValid() {
+        return isSessionReady();
+    }
+
+    @Override
+    public boolean requestRelogin() {
+        SessionConnector c = connector;
+        return c != null && c.requestRelogin();
+    }
+
     /**
      * Whether the normal DarkBot module loop may run. The legacy GUI manager checks
      * native
@@ -535,6 +547,8 @@ public class UnityPacketAdapter extends
      */
     @SuppressWarnings("unchecked")
     public <T extends API> T getManager(Class<T> api) {
+        if (api == SessionAPI.class)
+            return (T) this;
         UnityGameState g = game;
         if (g == null)
             return null;
@@ -808,8 +822,8 @@ public class UnityPacketAdapter extends
      * Connects Flash's persisted group policy to the transport-neutral group
      * manager.
      */
-    private static void configureGroupAutomation(GroupManager group) {
-        GroupManager.Automation policy = new GroupManager.Automation();
+    private static void configureGroupAutomation(UnityGroupManager group) {
+        UnityGroupManager.Automation policy = new UnityGroupManager.Automation();
         policy.acceptInvites = () -> Main.INSTANCE.config.GROUP.ACCEPT_INVITES;
         policy.openInvites = () -> Main.INSTANCE.config.GROUP.OPEN_INVITES;
         policy.blockInvites = () -> Main.INSTANCE.config.GROUP.BLOCK_INVITES;

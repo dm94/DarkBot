@@ -11,6 +11,7 @@ import com.google.gson.Gson;
 import eu.darkbot.api.extensions.Task;
 import eu.darkbot.api.managers.BackpageAPI;
 import eu.darkbot.api.managers.ConfigAPI;
+import eu.darkbot.api.managers.SessionAPI;
 import eu.darkbot.util.IOUtils;
 import eu.darkbot.util.TimeUtils;
 import eu.darkbot.util.Timer;
@@ -35,7 +36,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @SuppressWarnings({"OptionalUsedAsFieldOrParameterType", "OptionalAssignedToNull"})
-public class BackpageManager extends Thread implements BackpageAPI {
+public class BackpageManager extends Thread implements BackpageAPI, SessionAPI {
     public static final Gson GSON = new Gson();
 
     public static final Pattern RELOAD_TOKEN_PATTERN = Pattern.compile("reloadToken=([^\"]+)");
@@ -44,7 +45,6 @@ public class BackpageManager extends Thread implements BackpageAPI {
     private static final String[] ACTIONS = new String[]{
             "internalDock", "internalDock&tpl=internalDockAmmo", "internalSkylab"};
 
-    public final LegacyHangarManager legacyHangarManager;
     public final HangarManager hangarManager;
     public final AuctionManager auctionManager;
     public final NovaManager novaManager;
@@ -60,8 +60,6 @@ public class BackpageManager extends Thread implements BackpageAPI {
     protected final Timer refreshTimer = Timer.get(TimeUtils.MINUTE * 5);
     protected final Timer shopTimer = Timer.get(TimeUtils.MINUTE * 20);
 
-    protected long checkDrones = Long.MAX_VALUE;
-
     private int userId;
     private Optional<LoginData> loginData;
     private Status status = Status.UNKNOWN;
@@ -69,7 +67,6 @@ public class BackpageManager extends Thread implements BackpageAPI {
     public BackpageManager(Main main, ConfigAPI configAPI) {
         super("BackpageManager");
         this.main = main;
-        this.legacyHangarManager = new LegacyHangarManager(main, this);
         this.hangarManager = new HangarManager(this);
         this.auctionManager = new AuctionManager(this, configAPI);
         this.novaManager = new NovaManager(this);
@@ -84,12 +81,8 @@ public class BackpageManager extends Thread implements BackpageAPI {
 
             tickTasks(Task::onBackgroundTick);
 
-            // tick tasks only on valid SID?
             if (checkSidValid()) {
                 hangarManager.tick();
-
-                // is it even useful now?
-                //checkDrones();
                 tickTasks(Task::onTickTask);
             }
         }
@@ -168,32 +161,12 @@ public class BackpageManager extends Thread implements BackpageAPI {
         return getConnection("indexInternal.es?action=" + action).getResponseCode();
     }
 
-    private void checkDrones() {
-        if (System.currentTimeMillis() > checkDrones) {
-            try {
-                boolean checked = hangarManager.checkDrones();
-
-                System.out.println("Checked/repaired drones, all successful: " + checked);
-
-                checkDrones = !checked ? System.currentTimeMillis() + 30_000 : Long.MAX_VALUE;
-            } catch (Exception e) {
-                System.err.println("Failed to check & repair drones, retry in 5m");
-                checkDrones = System.currentTimeMillis() + 300_000;
-                e.printStackTrace();
-            }
-        }
-    }
-
     public void setLoginData(LoginData loginData) {
         if (this.loginData != null)
             throw new IllegalStateException("LoginData can be assigned only once!");
 
         this.loginData = Optional.ofNullable(loginData);
         this.isInvalid();
-    }
-
-    public void checkDronesAfterKill() {
-        this.checkDrones = System.currentTimeMillis();
     }
 
     private boolean isInvalid() {
@@ -261,11 +234,6 @@ public class BackpageManager extends Thread implements BackpageAPI {
         return Http.create(this.instance + params, method)
                 .setRawHeader("Cookie", "dosid=" + this.sid)
                 .addSupplier(() -> lastRequest = System.currentTimeMillis());
-    }
-
-    @Deprecated
-    public String getDataInventory(String params) {
-        return legacyHangarManager.getDataInventory(params);
     }
 
     public String getReloadToken(InputStream input) {
@@ -344,6 +312,19 @@ public class BackpageManager extends Thread implements BackpageAPI {
     @Override
     public Optional<String> findReloadToken(@NotNull String body) {
         return Optional.ofNullable(getReloadToken(body));
+    }
+
+    @Override
+    public boolean isSessionValid() {
+        return status == Status.VALID;
+    }
+
+    @Override
+    public boolean requestRelogin() {
+        if (!Main.API.hasCapability(Capability.LOGIN)) return false;
+        Main.API.handleRelogin(true);
+        sidNextUpdate = System.currentTimeMillis();
+        return true;
     }
 
     private enum Status {

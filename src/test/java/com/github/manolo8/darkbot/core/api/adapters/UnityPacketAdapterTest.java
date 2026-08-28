@@ -52,6 +52,6 @@ class UnityPacketAdapterTest {
         when(handler.getBestSupplier()).thenThrow(new IllegalStateException("reloading"));
 
         assertNull(UnityPacketAdapter.selectLocatorPick(handler, List.of()),
-                "packet PetManager supplies the wire-target fallback");
+                "packet UnityPetManager supplies the wire-target fallback");
     }
 }

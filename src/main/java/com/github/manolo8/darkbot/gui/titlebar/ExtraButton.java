@@ -115,31 +115,38 @@ public class ExtraButton extends TitleBarButton<JFrame> {
             List<JComponent> list = new ArrayList<>();
 
             I18nAPI i18n = api.requireAPI(I18nAPI.class);
-            BackpageAPI backpage = api.requireAPI(BackpageAPI.class);
             ConfigAPI config = api.requireAPI(ConfigAPI.class);
             Main main = api.requireInstance(Main.class);
 
             String p = "gui.hamburger_button.";
 
-            list.add(create(i18n.get(p + "home"), e -> {
-                String sid = backpage.getSid(), instance = backpage.getInstanceURI().toString();
-                if (sid == null || sid.isEmpty() || instance == null || instance.isEmpty()) return;
-                String url = instance + "?dosid=" + sid;
-                if ((e.getModifiers() & InputEvent.BUTTON3_MASK) != 0) SystemUtils.toClipboard(url);
-                else SystemUtils.openUrl(url);
-            }));
-            list.add(create(i18n.get(p + "reload"), e -> main.addTask(() -> {
-                System.out.println("Triggering refresh: user requested");
-                try {
-                    Main.API.handleRefresh();
-                } catch (Exception ex) {
-                    System.out.println("Exception handling user requested refresh:");
-                    ex.printStackTrace();
-                }
-            })));
+            boolean loginSupported = Main.API.hasCapability(Capability.LOGIN);
+
+            if (loginSupported) {
+                BackpageAPI backpage = api.requireAPI(BackpageAPI.class);
+                list.add(create(i18n.get(p + "home"), e -> {
+                    String sid = backpage.getSid(), instance = backpage.getInstanceURI().toString();
+                    if (sid == null || sid.isEmpty() || instance == null || instance.isEmpty()) return;
+                    String url = instance + "?dosid=" + sid;
+                    if ((e.getModifiers() & InputEvent.BUTTON3_MASK) != 0) SystemUtils.toClipboard(url);
+                    else SystemUtils.openUrl(url);
+                }));
+                list.add(create(i18n.get(p + "reload"), e -> main.addTask(() -> {
+                    System.out.println("Triggering refresh: user requested");
+                    try {
+                        Main.API.handleRefresh();
+                    } catch (Exception ex) {
+                        System.out.println("Exception handling user requested refresh:");
+                        ex.printStackTrace();
+                    }
+                })));
+            }
             list.add(create(i18n.get(p + "discord"), UIUtils.getIcon("discord"),
                     e -> SystemUtils.openUrl("https://discord.gg/KFd8vZT")));
-            list.add(create(i18n.get(p + "copy_sid"), e -> SystemUtils.toClipboard(backpage.getSid())));
+            if (loginSupported) {
+                BackpageAPI backpage = api.requireAPI(BackpageAPI.class);
+                list.add(create(i18n.get(p + "copy_sid"), e -> SystemUtils.toClipboard(backpage.getSid())));
+            }
             list.add(create(i18n.get(p + "reset_colorscheme"), e -> {
                 ConfigSetting<ColorScheme> cs = config.getConfig("bot_settings.map_display.cs");
                 if (cs == null) return;
@@ -151,7 +158,6 @@ public class ExtraButton extends TitleBarButton<JFrame> {
                 main.repairManager.resetDeaths();
             }));
 
-            boolean loginSupported = Main.API.hasCapability(Capability.LOGIN);
             if (loginSupported && OSUtil.isWindows()) {
                 list.add(create("Open Hangar", e -> {
                     JComponent component = (JComponent) e.getSource();
