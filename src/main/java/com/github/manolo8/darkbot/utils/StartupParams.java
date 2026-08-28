@@ -74,7 +74,7 @@ public class StartupParams implements API.Singleton {
     public enum PropertyKey {
         USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, GAME_SID, USER_ID, INSTANCE,
         MINI_CLIENT, MAP_ID, TARGET_MAP, CAPTURED_LOGIN_FILE, TRACE_OUTBOUND, DIAGNOSTIC_MOVE,
-        DIAGNOSTIC_MOVE_DISTANCE, DIAGNOSTIC_PORTAL, CAPTURE_S2C, ALLOW_STORE_SID;
+        DIAGNOSTIC_MOVE_DISTANCE, DIAGNOSTIC_PORTAL, CAPTURE_S2C, DRIFT_REPORT, ALLOW_STORE_SID;
 
         @Override
         public String toString() {
@@ -256,6 +256,14 @@ public class StartupParams implements API.Singleton {
          */
         public String getCaptureS2C() {
             return getProperty(PropertyKey.CAPTURE_S2C, "captureS2C");
+        }
+
+        /**
+         * Optional path for the protocol-drift report (drift-report.json): unknown
+         * packet/module ids, decode failures and dispatch errors observed in the session.
+         */
+        public String getDriftReport() {
+            return getProperty(PropertyKey.DRIFT_REPORT, "driftReport");
         }
 
         public boolean isAllowStoreSID() {

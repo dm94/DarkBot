@@ -61,6 +61,7 @@ import eu.darkbot.unity.session.SavedSessionProvider;
 import eu.darkbot.unity.session.SessionConnector;
 import eu.darkbot.unity.session.SessionHttpClient;
 import eu.darkbot.unity.session.SessionIdentity;
+import eu.darkbot.unity.session.VersionStore;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -130,19 +131,21 @@ public class UnityPacketAdapter extends
         GameAPIImpl<UnityPacketAdapter.NoOpWindow, UnityPacketAdapter.NoOpHandler, UnityPacketAdapter.NoOpMemory, UnityPacketAdapter.NoOpExtraMemoryReader, UnityPacketAdapter.NoOpInteraction, UnityPacketAdapter.UnityDirectInteraction> {
 
     /**
-     * Unity client version hash sent in the VersionRequest handshake and the
-     * LoginRequest
-     * {@code version} field (the wire value is the
-     * {@code packets.json → meta.versionHash}
-     * of the client build, not a "x.y.z" string). When the game updates, the map
-     * server
-     * rejects the old value with "Version mismatch: server version=X" — copy that X
-     * here.
+     * Fallback Unity client version hash, sent in the VersionRequest handshake and
+     * the LoginRequest {@code version} field (the wire value is the
+     * {@code packets.json → meta.versionHash} of the client build, not an
+     * "x.y.z" string). Only used when neither {@code darkbot.unity.version} nor a
+     * persisted negotiated value ({@link #VERSION_FILE}) is available.
+     * <p>
+     * When the game updates, the map server rejects this value with
+     * "Version mismatch: server version=X"; the connector negotiates X automatically
+     * and {@link VersionStore} persists it for the next launches.
      * (2026-08-19 update: previous build hash 0994fb6e… → e160dc30…, observed from
-     * the
-     * live server's VersionCommand after the client update.)
+     * the live server's VersionCommand after the client update.)
      */
     public static final String UNITY_CLIENT_VERSION = "e160dc30295f509e2405309a9e4d50fb";
+    /** Properties file where the negotiated handshake hash survives restarts. */
+    private static final Path VERSION_FILE = Paths.get("unity-version.properties");
     /** Initial map id (portal jumps re-resolve in a later iteration). */
     public static final int MAP_ID = 1;
     /**
@@ -165,6 +168,24 @@ public class UnityPacketAdapter extends
     private volatile String targetMap;
     /** Opt-in raw server→client frame dump ({@code captureS2C} login property). */
     private volatile OutputStream s2cCapture;
+    /**
+     * Opt-in protocol-drift report destination ({@code driftReport} login property or
+     * {@code darkbot.unity.driftReport} system property). Null when not configured.
+     */
+    private volatile Path driftReportFile;
+    /** How often the drift report is flushed while the session runs. */
+    private static final long DRIFT_FLUSH_MS = 30_000;
+    /** Ensures the periodic drift-report log line is printed only once per session. */
+    private volatile boolean driftWriteLogged;
+
+    /** Persists the server-negotiated handshake hash across restarts. */
+    private final VersionStore versionStore = new VersionStore(VERSION_FILE);
+    /**
+     * Effective handshake version in use: {@code darkbot.unity.version} system
+     * property, then the persisted negotiated hash, then {@link #UNITY_CLIENT_VERSION}.
+     * Updated again whenever the connector negotiates a new value mid-session.
+     */
+    private volatile String clientVersion = resolveClientVersion();
 
     private BotInstaller botInstaller;
 
@@ -187,11 +208,12 @@ public class UnityPacketAdapter extends
         final boolean diagnosticPortal;
         final String targetMap;
         final String captureS2C;
+        final String driftReport;
 
         SessionInput(String server, String username, String password, String dosid,
                 String gameSid, int userId, String instance, boolean miniClient, int mapId,
                 boolean traceOutbound, boolean diagnosticMove, int diagnosticMoveDistance,
-                boolean diagnosticPortal, String targetMap, String captureS2C) {
+                boolean diagnosticPortal, String targetMap, String captureS2C, String driftReport) {
             this.server = server;
             this.username = username;
             this.password = password;
@@ -211,6 +233,10 @@ public class UnityPacketAdapter extends
             this.captureS2C = captureS2C == null || captureS2C.trim().isEmpty()
                     ? null
                     : captureS2C.trim();
+            String drift = driftReport == null || driftReport.trim().isEmpty()
+                    ? System.getProperty("darkbot.unity.driftReport", "")
+                    : driftReport;
+            this.driftReport = drift.trim().isEmpty() ? null : drift.trim();
         }
     }
 
@@ -374,7 +400,41 @@ public class UnityPacketAdapter extends
 
     @Override
     public String getVersion() {
-        return "unity-packets " + UNITY_CLIENT_VERSION;
+        return "unity-packets " + clientVersion;
+    }
+
+    /**
+     * Resolves the handshake version to start with: the {@code darkbot.unity.version}
+     * system property (explicit override), then the version negotiated with the map
+     * server on a previous run ({@link #VERSION_FILE}), then the compiled-in fallback
+     * {@link #UNITY_CLIENT_VERSION}.
+     */
+    private String resolveClientVersion() {
+        String explicit = System.getProperty("darkbot.unity.version");
+        if (explicit != null && !explicit.trim().isEmpty()) {
+            System.out.println("[unity] Version override from darkbot.unity.version: " + explicit.trim());
+            return explicit.trim();
+        }
+        return versionStore.load().map(persisted -> {
+            System.out.println("[unity] Using persisted negotiated version " + persisted
+                    + " (delete " + VERSION_FILE + " to fall back to " + UNITY_CLIENT_VERSION + ")");
+            return persisted;
+        }).orElse(UNITY_CLIENT_VERSION);
+    }
+
+    /**
+     * Called by the connector when the map server rejects our handshake hash and a
+     * retry adopts the advertised one: updates the in-flight version and persists it
+     * so the next launch skips the failed handshake.
+     */
+    private void onVersionNegotiated(String advertised) {
+        clientVersion = advertised;
+        if (versionStore.save(advertised)) {
+            System.out.println("[unity] Persisted negotiated version " + advertised + " -> " + VERSION_FILE.toAbsolutePath());
+        } else {
+            System.err.println("[unity] Negotiated version " + advertised
+                    + " could not be persisted to " + VERSION_FILE.toAbsolutePath());
+        }
     }
 
     /** Route a legacy {@code API.moveShip} call to the Unity movement manager. */
@@ -543,6 +603,7 @@ public class UnityPacketAdapter extends
         this.diagnosticPortal = input.diagnosticPortal;
         this.targetMap = input.targetMap;
         openS2cCapture(input.captureS2C);
+        openDriftReport(input.driftReport);
 
         Thread worker = new Thread(() -> {
             try {
@@ -575,7 +636,7 @@ public class UnityPacketAdapter extends
                     account.userId = input.userId;
                     account.lastMethod = "GAME_SID";
                     SessionConnector.LoginProvider provider = new SavedSessionProvider(identity, account,
-                            UNITY_CLIENT_VERSION,
+                            clientVersion,
                             mapId, input.miniClient);
                     System.out.println("[unity] Using captured gameSid directly (server=" + srv
                             + ", userId=" + input.userId + ", instance=" + input.instance
@@ -596,7 +657,7 @@ public class UnityPacketAdapter extends
                 String lang = BigPointPortalHandler.langFor(srv);
                 int requestedMap = input.mapId > 0 ? input.mapId : MAP_ID;
                 System.out.println("[unity] Connecting to " + srv + " (lang=" + lang + ", version="
-                        + UNITY_CLIENT_VERSION + ", map " + requestedMap + ")");
+                        + clientVersion + ", map " + requestedMap + ")");
 
                 SessionConnector.LoginProvider provider;
                 SessionConnector.LoginMethod method;
@@ -617,7 +678,7 @@ public class UnityPacketAdapter extends
                     method = SessionConnector.LoginMethod.SID;
                 } else if (usr != null && !usr.isEmpty()) {
                     BigPointPortalHandler portal = new BigPointPortalHandler(http, srv, lang, usr, pwd);
-                    provider = new PortalLoginProvider(portal, new SessionIdentity(), UNITY_CLIENT_VERSION,
+                    provider = new PortalLoginProvider(portal, new SessionIdentity(), clientVersion,
                             input.mapId > 0 ? input.mapId : MAP_ID);
                     method = SessionConnector.LoginMethod.UNITY;
                 } else {
@@ -685,7 +746,8 @@ public class UnityPacketAdapter extends
                     parseInt(props.getDiagnosticMoveDistance(), 200),
                     parseBooleanInt(props.getDiagnosticPortal(), false),
                     props.getTargetMap(),
-                    props.getCaptureS2C());
+                    props.getCaptureS2C(),
+                    props.getDriftReport());
         }
 
         LoginData login = LoginUtils.performUserLogin(params, true);
@@ -696,7 +758,7 @@ public class UnityPacketAdapter extends
 
         return new SessionInput(serverFromUrl(login.getUrl()), login.getUsername(),
                 login.getPassword(), login.getSid(), null, 0, null, false,
-                MAP_ID, false, false, 200, false, null, null);
+                MAP_ID, false, false, 200, false, null, null, null);
     }
 
     /**
@@ -816,6 +878,8 @@ public class UnityPacketAdapter extends
         }
         SessionConnector c = new SessionConnector(http, maps, provider, statusListener(), listener);
         c.setLoginMethod(method);
+        // Persist the server-advertised hash when a handshake mismatch is renegotiated.
+        c.setVersionNegotiatedListener(this::onVersionNegotiated);
         c.start();
         this.connector = c;
         // Portal jumps: on JumpInitiatedCommand the connector must reconnect to the
@@ -878,6 +942,7 @@ public class UnityPacketAdapter extends
             startDiagnosticPortal(c, g);
 
         long nextMetricsLog = System.currentTimeMillis() + 10_000;
+        long nextDriftFlush = System.currentTimeMillis() + DRIFT_FLUSH_MS;
         long nextUnityReviveAt = 0;
         try {
             while (true) {
@@ -897,13 +962,23 @@ public class UnityPacketAdapter extends
                 g.getGroup().tickAutomation();
                 botInstaller.invalid.send(!isSessionReady());
                 if (traceOutbound && System.currentTimeMillis() >= nextMetricsLog) {
-                    System.out.println("[unity-metrics] " + g.getActionMetrics().status());
+                    String drift = g.getDriftReport().hasAnomalies()
+                            ? " " + g.getDriftReport().summary()
+                            : "";
+                    System.out.println("[unity-metrics] " + g.getActionMetrics().status() + drift);
                     nextMetricsLog = System.currentTimeMillis() + 10_000;
+                }
+                if (System.currentTimeMillis() >= nextDriftFlush) {
+                    flushDriftReport(g);
+                    nextDriftFlush = System.currentTimeMillis() + DRIFT_FLUSH_MS;
                 }
                 Thread.sleep(VALIDITY_POLL_MS);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } finally {
+            // Final flush so the report reflects the whole session even on shutdown.
+            flushDriftReport(g);
         }
     }
 
@@ -995,6 +1070,34 @@ public class UnityPacketAdapter extends
         } catch (IOException e) {
             s2cCapture = null;
             System.err.println("[unity] S2C capture write failed, capture disabled: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Resolves the opt-in drift-report destination ({@code driftReport} login property,
+     * else {@code darkbot.unity.driftReport}); without it drift telemetry stays in memory
+     * only.
+     */
+    private void openDriftReport(String path) {
+        if (path == null)
+            return;
+        driftReportFile = Paths.get(path);
+        System.out.println("[unity] Drift telemetry -> " + driftReportFile.toAbsolutePath()
+                + " (periodic drift-report.json: unknown ids, decode failures, dispatch errors)");
+    }
+
+    /**
+     * Dumps the game state's drift report if a destination is configured. Best effort:
+     * {@link eu.darkbot.unity.codec.telemetry.DriftReport#writeTo} already swallows IO
+     * errors, and a missing destination is a no-op.
+     */
+    private void flushDriftReport(UnityGameState g) {
+        Path file = driftReportFile;
+        if (file == null)
+            return;
+        if (g.getDriftReport().writeTo(file) && !driftWriteLogged) {
+            driftWriteLogged = true;
+            System.out.println("[unity] Drift report written -> " + file.toAbsolutePath());
         }
     }
 
