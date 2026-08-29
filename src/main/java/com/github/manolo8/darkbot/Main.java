@@ -162,8 +162,13 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.pluginHandler   = pluginAPI.requireInstance(PluginHandler.class);
         this.pluginUpdater   = pluginAPI.requireInstance(PluginUpdater.class);
         this.backpage        = pluginAPI.requireInstance(BackpageManager.class);
-        pluginAPI.requireAPI(BackpageModuleRegistry.class)
-                .register(pluginAPI.requireInstance(AuctionModule.class));
+        // HTTP auction automation is a functional task, but it is only meaningful when
+        // the active adapter exposes a browser login/backpage session. Unity plugins can
+        // register packet-backed tasks against SkylabAPI or other managers instead.
+        if (configManager.getAPI(pluginAPI).hasCapability(Capability.LOGIN)) {
+            pluginAPI.requireAPI(BackpageModuleRegistry.class)
+                    .register(pluginAPI.requireInstance(AuctionModule.class));
+        }
         this.featureRegistry = pluginAPI.requireInstance(FeatureRegistry.class);
         this.repairManager   = pluginAPI.requireInstance(RepairManager.class);
         this.botInstaller = pluginAPI.requireInstance(BotInstaller.class);
