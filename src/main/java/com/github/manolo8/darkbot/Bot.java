@@ -94,17 +94,21 @@ public class Bot {
                 return new Permissions();
             }
         });
-        System.setSecurityManager(new SecurityManager() {
-            @Override
-            public void checkPermission(Permission perm) {
-                if (perm.getName().equals("setPolicy") || perm.getName().equals("setSecurityManager"))
-                    throw new SecurityException(perm.toString());
-
-                // Enforce permissions for runtime or security purposes, ignore everything else.
-                if (perm.getName().startsWith("loadLibrary.") ||
-                        perm.getName().equals("createClassLoader")) super.checkPermission(perm);
+        try {
+            if (System.getSecurityManager() == null) {
+                System.setSecurityManager(new SecurityManager() {
+                    @Override
+                    public void checkPermission(Permission perm) {
+                        if (perm.getName().equals("setPolicy") || perm.getName().equals("setSecurityManager"))
+                            throw new SecurityException(perm.toString());
+                        if (perm.getName().startsWith("loadLibrary.") ||
+                                perm.getName().equals("createClassLoader")) super.checkPermission(perm);
+                    }
+                });
             }
-        });
+        } catch (UnsupportedOperationException e) {
+            System.out.println("Security Manager is unavailable on this Java runtime; continuing without it.");
+        }
     }
 
     public static class DarkLaf extends FlatDarkLaf {

@@ -125,7 +125,11 @@ public class FeatureRegistry implements PluginListener, ExtensionsAPI {
                 feature.setInstance(instance = featureLoader.loadFeature(feature));
                 return Optional.of(instance);
             } catch (Throwable e) {
-                feature.getIssues().handleFeatureException(PluginIssue.Level.ERROR, "bot.issue.feature.failed_to_load", e);
+                // Optional plugin features (for example signed-only legacy Flash
+                // features) must not prevent the core UI or Unity session from
+                // starting. Keep the failure visible in the feature issue panel and
+                // continue loading other features.
+                feature.getIssues().handleFeatureException(PluginIssue.Level.WARNING, "bot.issue.feature.failed_to_load", e);
                 return Optional.empty();
             }
         }

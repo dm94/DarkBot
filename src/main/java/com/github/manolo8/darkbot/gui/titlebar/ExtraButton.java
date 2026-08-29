@@ -2,6 +2,7 @@ package com.github.manolo8.darkbot.gui.titlebar;
 
 import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.config.ColorScheme;
+import com.github.manolo8.darkbot.backpage.SkylabMenuProvider;
 import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.ConfigEntity;
 import com.github.manolo8.darkbot.core.api.Capability;
@@ -93,9 +94,18 @@ public class ExtraButton extends TitleBarButton<JFrame> {
 
     private void rebuild(Main main) {
         if (!empty) return;
-        for (ExtraMenus extraDecoration : EXTRA_DECORATIONS) {
-            for (JComponent component : extraDecoration.getExtraMenuItems(main.pluginAPI)) {
-                extraOptions.add(component);
+        // The default provider is always present, even if feature loading was
+        // interrupted by an optional unsigned plugin. Otherwise the menu can contain
+        // only stale development entries such as Object inspector.
+        List<ExtraMenus> providers = new ArrayList<>(EXTRA_DECORATIONS);
+        if (providers.stream().noneMatch(DefaultExtraMenuProvider.class::isInstance))
+            providers.add(new DefaultExtraMenuProvider());
+        for (ExtraMenus extraDecoration : providers) {
+            try {
+                for (JComponent component : extraDecoration.getExtraMenuItems(main.pluginAPI))
+                    extraOptions.add(component);
+            } catch (RuntimeException error) {
+                error.printStackTrace();
             }
         }
         empty = false;
@@ -158,6 +168,10 @@ public class ExtraButton extends TitleBarButton<JFrame> {
                 main.statsManager.resetStats();
                 main.repairManager.resetDeaths();
             }));
+
+            if (!loginSupported && Main.API instanceof com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter) {
+                list.addAll(new SkylabMenuProvider().getExtraMenuItems(api));
+            }
 
             if (loginSupported && gameVisible && OSUtil.isWindows()) {
                 list.add(create("Open Hangar", e -> {

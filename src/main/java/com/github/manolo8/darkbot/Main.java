@@ -2,6 +2,7 @@ package com.github.manolo8.darkbot;
 
 import com.github.manolo8.darkbot.backpage.AuctionModule;
 import com.github.manolo8.darkbot.backpage.BackpageManager;
+import com.github.manolo8.darkbot.backpage.SkylabTask;
 import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.ConfigHandler;
 import com.github.manolo8.darkbot.config.ConfigManager;
@@ -162,22 +163,23 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.pluginHandler   = pluginAPI.requireInstance(PluginHandler.class);
         this.pluginUpdater   = pluginAPI.requireInstance(PluginUpdater.class);
         this.backpage        = pluginAPI.requireInstance(BackpageManager.class);
-        // HTTP auction automation is a functional task, but it is only meaningful when
-        // the active adapter exposes a browser login/backpage session. Unity plugins can
-        // register packet-backed tasks against SkylabAPI or other managers instead.
-        if (configManager.getAPI(pluginAPI).hasCapability(Capability.LOGIN)) {
-            pluginAPI.requireAPI(BackpageModuleRegistry.class)
-                    .register(pluginAPI.requireInstance(AuctionModule.class));
-        }
+        // The selected API is created only after the core services have been initialized.
+        // Functional tasks requiring that API are registered immediately afterwards.
+        eu.darkbot.api.extensions.backpage.BackpageModuleRegistry functionalTasks;
         this.featureRegistry = pluginAPI.requireInstance(FeatureRegistry.class);
         this.repairManager   = pluginAPI.requireInstance(RepairManager.class);
         this.botInstaller = pluginAPI.requireInstance(BotInstaller.class);
         this.eventBroker = pluginAPI.requireAPI(EventBrokerAPI.class);
 
         API = configManager.getAPI(pluginAPI);
+        // Publish the selected adapter before resolving any adapter-specific APIs.
+        // UnityPacketAdapter registers SkylabAPI and the other packet managers while
+        // it is constructed; requireAPI must therefore happen after this assignment.
         if (API.hasCapability(Capability.SHOW_GAME))
             API.setSize(config.BOT_SETTINGS.API_CONFIG.width, config.BOT_SETTINGS.API_CONFIG.height);
         pluginAPI.addInstance(API);
+        functionalTasks = pluginAPI.requireAPI(BackpageModuleRegistry.class);
+        registerFunctionalTasks(functionalTasks);
 
         this.performanceManager = pluginAPI.requireInstance(PerformanceManager.class);
 
@@ -194,6 +196,9 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.pluginHandler.updatePluginsSync();
         this.pluginHandler.addListener(this);
 
+        // Build the UI only after the selected adapter and its packet managers have
+        // been published. Unity menu providers must never resolve SkylabAPI through
+        // the generic implementation scanner during early construction.
         this.form = new MainGui(this);
         this.pluginUpdater.scheduleUpdateChecker();
 
@@ -232,6 +237,18 @@ public class Main extends Thread implements PluginListener, BotAPI {
             } catch (Throwable e) {
                 e.printStackTrace();
             }
+        }
+    }
+
+    private void registerFunctionalTasks(eu.darkbot.api.extensions.backpage.BackpageModuleRegistry registry) {
+        if (API.hasCapability(Capability.LOGIN)) {
+            registry.register(pluginAPI.requireInstance(AuctionModule.class));
+        } else if (API instanceof UnityPacketAdapter) {
+            // UnityPacketAdapter may still be constructing its pipeline here. Register
+            // the task lazily through the adapter-owned manager once the pipeline exists.
+            UnityPacketAdapter unity = (UnityPacketAdapter) API;
+            eu.darkbot.api.managers.SkylabAPI skylab = unity.getSkylabManager();
+            if (skylab != null) registry.register(new SkylabTask(skylab));
         }
     }
 

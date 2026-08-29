@@ -552,6 +552,11 @@ public class UnityPacketAdapter extends
      *         memory impl)
      */
     @SuppressWarnings("unchecked")
+    public SkylabAPI getSkylabManager() {
+        UnityGameState g = game;
+        return g == null ? null : g.getSkylab();
+    }
+
     public <T extends API> T getManager(Class<T> api) {
         if (api == SessionAPI.class)
             return (T) this;

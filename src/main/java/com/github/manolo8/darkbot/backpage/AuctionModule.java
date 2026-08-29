@@ -67,6 +67,11 @@ public class AuctionModule implements BackpageModule {
     public void install(PluginAPI pluginAPI) {
     }
 
+    /** Exposes whether this functional task has a usable HTTP backend. */
+    public boolean isAvailable() {
+        return auctionManager != null;
+    }
+
     @Override
     public void onTickTask() {
         if (auctionManager == null) {
