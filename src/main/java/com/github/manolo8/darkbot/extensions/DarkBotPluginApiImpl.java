@@ -21,6 +21,7 @@ import com.github.manolo8.darkbot.modules.utils.AttackAPIImpl;
 import com.github.manolo8.darkbot.utils.LegacyModules;
 import eu.darkbot.api.API;
 import eu.darkbot.api.managers.EventBrokerAPI;
+import eu.darkbot.api.managers.ChatAPI;
 import eu.darkbot.impl.PluginApiImpl;
 import eu.darkbot.impl.decorators.ListenerDecorator;
 import eu.darkbot.impl.managers.EventBroker;
@@ -64,8 +65,15 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
     @Override
     public @NotNull <T extends API> T requireAPI(@NotNull Class<T> api) {
         if (Main.API instanceof UnityPacketAdapter) {
-            T unity = ((UnityPacketAdapter) Main.API).getManager(api);
+            UnityPacketAdapter unityAdapter = (UnityPacketAdapter) Main.API;
+            T unity = unityAdapter.getManager(api);
             if (unity != null) return unity;
+            // Flash facade implementations must never silently become the source of
+            // truth in Unity mode. APIs without a Unity equivalent are rejected here
+            // instead of returning a memory-backed object that can corrupt state.
+            if (api == ChatAPI.class) {
+                throw new UnsupportedOperationException("ChatAPI is not available until the Unity Infinicast channel is connected");
+            }
         }
         return super.requireAPI(api);
     }
