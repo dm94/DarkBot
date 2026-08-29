@@ -116,8 +116,9 @@ public class InfosDrawer implements Drawable {
             }
         }
 
-        if (Main.API.hasCapability(Capability.LOGIN))
+        if (Main.API.hasCapability(Capability.LOGIN)) {
             mg.drawString(mg.getWidth() - 5, 12, "SID: " + main.backpage.sidStatus(), MapGraphics.StringAlign.RIGHT);
+        }
     }
 
     public void drawMap(MapGraphics mg) {
