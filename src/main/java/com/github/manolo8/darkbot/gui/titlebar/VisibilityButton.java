@@ -1,6 +1,7 @@
 package com.github.manolo8.darkbot.gui.titlebar;
 
 import com.github.manolo8.darkbot.Main;
+import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.gui.components.ApiSettingsPanel;
 import com.github.manolo8.darkbot.gui.utils.UIUtils;
 import com.github.manolo8.darkbot.utils.I18n;
@@ -23,8 +24,11 @@ public class VisibilityButton extends TitleBarToggleButton<JFrame> {
         this.main = main;
 
         setSelectedIcon(HIDE);
-        setToolTipText(I18n.get("gui.visibility_button"));
-        setSelected(API.isInitiallyShown());
+        boolean supported = API.hasCapability(Capability.SHOW_GAME);
+        setEnabled(supported);
+        setToolTipText(supported ? I18n.get("gui.visibility_button")
+                : I18n.get("gui.visibility_button.unsupported"));
+        setSelected(supported && API.isInitiallyShown());
         addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -36,6 +40,7 @@ public class VisibilityButton extends TitleBarToggleButton<JFrame> {
 
     @Override
     public void actionPerformed(ActionEvent e) {
+        if (!API.hasCapability(Capability.SHOW_GAME)) return;
         API.setVisible(isSelected(), main.config.BOT_SETTINGS.API_CONFIG.FULLY_HIDE_API);
     }
 

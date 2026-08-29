@@ -121,6 +121,7 @@ public class ExtraButton extends TitleBarButton<JFrame> {
             String p = "gui.hamburger_button.";
 
             boolean loginSupported = Main.API.hasCapability(Capability.LOGIN);
+            boolean gameVisible = Main.API.hasCapability(Capability.SHOW_GAME);
 
             if (loginSupported) {
                 BackpageAPI backpage = api.requireAPI(BackpageAPI.class);
@@ -158,7 +159,7 @@ public class ExtraButton extends TitleBarButton<JFrame> {
                 main.repairManager.resetDeaths();
             }));
 
-            if (loginSupported && OSUtil.isWindows()) {
+            if (loginSupported && gameVisible && OSUtil.isWindows()) {
                 list.add(create("Open Hangar", e -> {
                     JComponent component = (JComponent) e.getSource();
                     component.setEnabled(false);
