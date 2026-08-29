@@ -1034,9 +1034,14 @@ public class UnityPacketAdapter extends
                 try { port = Integer.parseInt(host.substring(colon + 1)); host = host.substring(0, colon); }
                 catch (NumberFormatException ignored) { }
             }
+            String handshakeHex = System.getProperty("darkbot.unity.chat.handshakeHex", "");
+            if (handshakeHex.trim().isEmpty()) {
+                System.out.println("[unity] Chat channel disabled: set darkbot.unity.chat.handshakeHex after capturing the production handshake");
+                return;
+            }
             InfinicastConnection channel = new InfinicastConnection(
                     new InfinicastFrameCodec(new byte[0], 4 * 1024 * 1024),
-                    (in, out) -> { },
+                    (in, out) -> writeHandshake(out, handshakeHex),
                     g::onChatMessage);
             channel.connect(host, port);
             chatConnection = channel;
@@ -1044,6 +1049,13 @@ public class UnityPacketAdapter extends
         } catch (Exception e) {
             System.err.println("[unity] Chat channel unavailable: " + e.getMessage());
         }
+    }
+
+    private static void writeHandshake(java.io.DataOutputStream out, String hex) throws IOException {
+        String value = hex.replaceAll("[^0-9a-fA-F]", "");
+        if ((value.length() & 1) != 0) throw new IOException("chat handshakeHex must contain complete bytes");
+        for (int i = 0; i < value.length(); i += 2) out.writeByte(Integer.parseInt(value.substring(i, i + 2), 16));
+        out.flush();
     }
 
     /**
