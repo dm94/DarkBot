@@ -20,7 +20,7 @@ public class AuctionModule implements BackpageModule {
     private static final long FAILURE_RETRY_MS = 30_000;
     private static final long CAPTCHA_RETRY_MS = 15_000;
 
-    private final AuctionManager auctionManager;
+    private final AuctionBackend auctionManager;
     private final ConcurrentLinkedQueue<BidRequest> pendingBids = new ConcurrentLinkedQueue<>();
 
     private volatile State state = State.IDLE;
@@ -31,10 +31,14 @@ public class AuctionModule implements BackpageModule {
     private volatile String statusMessage = "";
 
     public AuctionModule(BackpageManager backpageManager) {
-        this(backpageManager.getAuctionManager());
+        this(backpageManager == null ? null : backpageManager.getAuctionManager());
     }
 
-    AuctionModule(AuctionManager auctionManager) {
+    public AuctionModule(AuctionBackend auctionBackend, boolean unityBackend) {
+        this(auctionBackend);
+    }
+
+    AuctionModule(AuctionBackend auctionManager) {
         this.auctionManager = auctionManager;
     }
 

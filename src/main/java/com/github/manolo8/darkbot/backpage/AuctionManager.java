@@ -11,7 +11,7 @@ import java.net.HttpURLConnection;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class AuctionManager {
+public class AuctionManager implements AuctionBackend {
     private final BackpageManager backpageManager;
     private final AuctionData data;
     private final Pattern AUCTION_ERROR_PATTERN = Pattern.compile("infoText = '(.*?)';.*?" + "icon = '(.*)';", Pattern.DOTALL);
@@ -25,10 +25,12 @@ public class AuctionManager {
                 "indexInternal.es?action=internalAuction", "auction");
     }
 
+    @Override
     public AuctionData getData() {
         return data;
     }
 
+    @Override
     public boolean isSolvingCaptcha() {
         return captchaHandler.isSolvingCaptcha();
     }
@@ -42,6 +44,7 @@ public class AuctionManager {
      * @param expiryTime only update if within
      * @return null if update wasn't required (non-expired), true if updated ok, false if update failed
      */
+    @Override
     public Boolean update(long expiryTime) {
         try {
             if (System.currentTimeMillis() <= lastAuctionUpdate + expiryTime) return null;
@@ -65,6 +68,7 @@ public class AuctionManager {
         return bidItem(auctionItem, auctionItem.getCurrentBid() + 10000L);
     }
 
+    @Override
     public boolean bidItem(AuctionItems auctionItem, long amount) {
         try {
             String token = backpageManager.getHttp("indexInternal.es")

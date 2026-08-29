@@ -247,11 +247,13 @@ public class Main extends Thread implements PluginListener, BotAPI {
         if (API.hasCapability(Capability.LOGIN)) {
             registry.register(pluginAPI.requireInstance(AuctionModule.class));
         } else if (API instanceof UnityPacketAdapter) {
-            // UnityPacketAdapter may still be constructing its pipeline here. Register
-            // the task lazily through the adapter-owned manager once the pipeline exists.
             UnityPacketAdapter unity = (UnityPacketAdapter) API;
             eu.darkbot.api.managers.SkylabAPI skylab = unity.getSkylabManager();
             if (skylab != null) registry.register(new SkylabTask(skylab));
+            // AuctionModule is transport-neutral; Unity supplies a packet backend and
+            // never constructs the legacy HTTP manager in this branch.
+            if (unity.getAuctionBackend() != null)
+                registry.register(new AuctionModule(unity.getAuctionBackend(), true));
         }
     }
 

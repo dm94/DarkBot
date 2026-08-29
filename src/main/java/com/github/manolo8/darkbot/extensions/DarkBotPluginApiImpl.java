@@ -69,7 +69,13 @@ public class DarkBotPluginApiImpl extends PluginApiImpl {
             if (unity != null) return unity;
             // APIs without a Unity equivalent still resolve through the common API
             // registry. They remain explicitly unsupported by their Unity adapter and
-            // never become packet state accidentally.
+            // never become packet state accidentally. Flash-only facades are blocked
+            // explicitly so Unity cannot silently read native memory.
+            if (api == eu.darkbot.api.managers.BackpageAPI.class
+                    || api == eu.darkbot.api.managers.NativeBrowserAPI.class) {
+                throw new UnsupportedOperationException("" + api.getSimpleName()
+                        + " is unavailable in Unity packet mode");
+            }
         }
         return super.requireAPI(api);
     }

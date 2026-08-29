@@ -20,6 +20,7 @@ import eu.darkbot.api.game.other.Locatable;
 import eu.darkbot.api.extensions.selectors.PetGearSupplier;
 import eu.darkbot.api.managers.AssemblyAPI;
 import eu.darkbot.api.managers.ChatAPI;
+import eu.darkbot.api.managers.GameLogAPI;
 import eu.darkbot.api.managers.AttackAPI;
 import eu.darkbot.api.managers.BoosterAPI;
 import eu.darkbot.api.managers.DispatchAPI;
@@ -56,6 +57,9 @@ import eu.darkbot.unity.game.UnityRepairManager;
 import eu.darkbot.unity.game.StarSystemManager;
 import eu.darkbot.unity.game.UnityStatsManager;
 import eu.darkbot.unity.game.UnityGameState;
+import eu.darkbot.unity.game.UnityAuctionManager;
+import com.github.manolo8.darkbot.backpage.AuctionModule;
+import com.github.manolo8.darkbot.backpage.UnityAuctionBackend;
 import eu.darkbot.unity.net.FrameListener;
 import eu.darkbot.unity.net.PacketSender;
 import eu.darkbot.unity.session.BigPointPortalHandler;
@@ -403,7 +407,7 @@ public class UnityPacketAdapter extends
                 game.getItems(), game.getMovement(), game.getAttack(), game.getPet(), game.getGroup(),
                 game.getHangar(), game.getQuests(),
                 game.getBooster(), game.getDispatch(), game.getShipWarp(), game.getAssembly(),
-                game.getUserMessages());
+                game.getUserMessages(), game.getLogs());
     }
 
     @Override
@@ -558,6 +562,11 @@ public class UnityPacketAdapter extends
      *         memory impl)
      */
     @SuppressWarnings("unchecked")
+    public com.github.manolo8.darkbot.backpage.AuctionBackend getAuctionBackend() {
+        UnityGameState g = game;
+        return g == null ? null : new UnityAuctionBackend(g.getAuctions());
+    }
+
     public SkylabAPI getSkylabManager() {
         UnityGameState g = game;
         return g == null ? null : g.getSkylab();
@@ -611,6 +620,8 @@ public class UnityPacketAdapter extends
             return (T) g.getAssembly();
         if (api == ChatAPI.class)
             return (T) g.getChat();
+        if (api == GameLogAPI.class)
+            return (T) g.getLogs();
         return null;
     }
 
