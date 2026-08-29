@@ -41,6 +41,9 @@ import eu.darkbot.api.managers.SkylabAPI;
 import eu.darkbot.api.managers.StarSystemAPI;
 import eu.darkbot.api.managers.StatsAPI;
 import eu.darkbot.unity.codec.PacketDef;
+import eu.darkbot.unity.chat.ICMessage;
+import eu.darkbot.unity.chat.InfinicastConnection;
+import eu.darkbot.unity.chat.InfinicastFrameCodec;
 import eu.darkbot.unity.codec.PacketFieldReader;
 import eu.darkbot.unity.codec.PacketRegistry;
 import eu.darkbot.unity.game.EntitiesManager;
@@ -64,6 +67,7 @@ import eu.darkbot.unity.session.SavedSessionProvider;
 import eu.darkbot.unity.session.SessionConnector;
 import eu.darkbot.unity.session.SessionHttpClient;
 import eu.darkbot.unity.session.SessionIdentity;
+import eu.darkbot.unity.session.SessionBlock;
 import eu.darkbot.unity.session.VersionStore;
 
 import java.io.FileInputStream;
@@ -171,6 +175,7 @@ public class UnityPacketAdapter extends
     private volatile String targetMap;
     /** Opt-in raw server→client frame dump ({@code captureS2C} login property). */
     private volatile OutputStream s2cCapture;
+    private volatile InfinicastConnection chatConnection;
     /**
      * Opt-in protocol-drift report destination ({@code driftReport} login property or
      * {@code darkbot.unity.driftReport} system property). Null when not configured.
@@ -913,6 +918,7 @@ public class UnityPacketAdapter extends
         c.setVersionNegotiatedListener(this::onVersionNegotiated);
         c.start();
         this.connector = c;
+        startUnityChat(provider, g);
         // Portal jumps: on JumpInitiatedCommand the connector must reconnect to the
         // DESTINATION map (the real client's setReconnectMap), not the login map.
         g.onJumpConfirmed(c::requestMapOverride);
@@ -1008,8 +1014,34 @@ public class UnityPacketAdapter extends
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
+            if (chatConnection != null) chatConnection.close();
             // Final flush so the report reflects the whole session even on shutdown.
             flushDriftReport(g);
+        }
+    }
+
+    /** Starts the optional chat channel when the portal supplied chatHost. */
+    private void startUnityChat(SessionConnector.LoginProvider provider, UnityGameState g) {
+        try {
+            SessionBlock block = provider.validateSid();
+            String hostSpec = block.chatHost();
+            if (hostSpec == null || hostSpec.trim().isEmpty()) return;
+            String host = hostSpec.trim();
+            int port = 80;
+            int colon = host.lastIndexOf(':');
+            if (colon > 0) {
+                try { port = Integer.parseInt(host.substring(colon + 1)); host = host.substring(0, colon); }
+                catch (NumberFormatException ignored) { }
+            }
+            InfinicastConnection channel = new InfinicastConnection(
+                    new InfinicastFrameCodec(new byte[0], 4 * 1024 * 1024),
+                    (in, out) -> { },
+                    g::onChatMessage);
+            channel.connect(host, port);
+            chatConnection = channel;
+            g.getChat().bind(channel);
+        } catch (Exception e) {
+            System.err.println("[unity] Chat channel unavailable: " + e.getMessage());
         }
     }
 
