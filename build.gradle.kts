@@ -82,7 +82,14 @@ dependencies {
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
-tasks.withType<JavaExec> { systemProperty("file.encoding", "UTF-8") }
+tasks.withType<JavaExec> {
+    systemProperty("file.encoding", "UTF-8")
+    // Keep the runnable bot aligned with the sibling source modules during Unity
+    // development. This avoids silently executing a stale mavenLocal unity-game jar.
+    // Dependency substitution already builds the included project when needed;
+    // do not resolve an included-build handle here (Gradle rejects that during
+    // task configuration for this standalone project).
+}
 
 // JUnit 5 (jupiter) is the declared test framework; without this the Gradle test task
 // defaults to JUnit 4 and silently runs zero tests (AGENTS.md documents `gradle test`).
