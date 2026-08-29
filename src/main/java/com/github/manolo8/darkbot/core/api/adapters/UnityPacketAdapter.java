@@ -918,7 +918,7 @@ public class UnityPacketAdapter extends
         c.setVersionNegotiatedListener(this::onVersionNegotiated);
         c.start();
         this.connector = c;
-        startUnityChat(provider, g);
+        startUnityChat(c, g);
         // Portal jumps: on JumpInitiatedCommand the connector must reconnect to the
         // DESTINATION map (the real client's setReconnectMap), not the login map.
         g.onJumpConfirmed(c::requestMapOverride);
@@ -1021,9 +1021,10 @@ public class UnityPacketAdapter extends
     }
 
     /** Starts the optional chat channel when the portal supplied chatHost. */
-    private void startUnityChat(SessionConnector.LoginProvider provider, UnityGameState g) {
+    private void startUnityChat(SessionConnector session, UnityGameState g) {
         try {
-            SessionBlock block = provider.validateSid();
+            SessionBlock block = session.activeSession().orElse(null);
+            if (block == null) return;
             String hostSpec = block.chatHost();
             if (hostSpec == null || hostSpec.trim().isEmpty()) return;
             String host = hostSpec.trim();
