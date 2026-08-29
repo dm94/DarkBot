@@ -31,7 +31,7 @@ public class AuctionModule implements BackpageModule {
     private volatile String statusMessage = "";
 
     public AuctionModule(BackpageManager backpageManager) {
-        this(backpageManager.auctionManager);
+        this(backpageManager.getAuctionManager());
     }
 
     AuctionModule(AuctionManager auctionManager) {
@@ -69,6 +69,11 @@ public class AuctionModule implements BackpageModule {
 
     @Override
     public void onTickTask() {
+        if (auctionManager == null) {
+            setState(State.IDLE);
+            statusMessage = "Auction unavailable without a browser session";
+            return;
+        }
         if (auctionManager.isSolvingCaptcha()) {
             setState(State.CAPTCHA);
             statusMessage = "Waiting for captcha solve";
@@ -115,6 +120,7 @@ public class AuctionModule implements BackpageModule {
     }
 
     public List<AuctionItemInfo> getItems() {
+        if (auctionManager == null) return Collections.emptyList();
         return auctionManager.getData().getAuctionItems().values().stream()
                 .map(AuctionItemInfo::of)
                 .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
@@ -122,6 +128,7 @@ public class AuctionModule implements BackpageModule {
 
     public List<AuctionItemInfo> getItems(AuctionItems.Type type) {
         Objects.requireNonNull(type, "type");
+        if (auctionManager == null) return Collections.emptyList();
         return auctionManager.getData().getAuctionItems().values().stream()
                 .filter(item -> item.getAuctionType() == type)
                 .map(AuctionItemInfo::of)
@@ -148,6 +155,7 @@ public class AuctionModule implements BackpageModule {
     }
 
     private boolean bidItem(BidRequest request) {
+        if (auctionManager == null) return false;
         AuctionItems live = auctionManager.getData().getAuctionItems().get(request.item.getId());
         if (live == null) {
             statusMessage = "Item no longer listed: " + request.item.getId();

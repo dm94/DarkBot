@@ -45,9 +45,14 @@ public class BackpageManager extends Thread implements BackpageAPI, SessionAPI {
     private static final String[] ACTIONS = new String[]{
             "internalDock", "internalDock&tpl=internalDockAmmo", "internalSkylab"};
 
-    public final HangarManager hangarManager;
-    public final AuctionManager auctionManager;
-    public final NovaManager novaManager;
+    /**
+     * Legacy HTTP managers are created lazily and only when the active API supports
+     * a browser session. This prevents Unity packet mode from constructing a second,
+     * stale hangar model and from starting Flash-only feature dependencies.
+     */
+    private volatile HangarManager hangarManager;
+    private volatile AuctionManager auctionManager;
+    private volatile NovaManager novaManager;
 
     protected final Main main;
     protected String sid, instance;
@@ -67,9 +72,11 @@ public class BackpageManager extends Thread implements BackpageAPI, SessionAPI {
     public BackpageManager(Main main, ConfigAPI configAPI) {
         super("BackpageManager");
         this.main = main;
-        this.hangarManager = new HangarManager(this);
-        this.auctionManager = new AuctionManager(this, configAPI);
-        this.novaManager = new NovaManager(this);
+        if (Main.API == null || Main.API.hasCapability(Capability.LOGIN)) {
+            this.hangarManager = new HangarManager(this);
+            this.auctionManager = new AuctionManager(this, configAPI);
+            this.novaManager = new NovaManager(this);
+        }
         setDaemon(true);
     }
 
@@ -82,7 +89,8 @@ public class BackpageManager extends Thread implements BackpageAPI, SessionAPI {
             tickTasks(Task::onBackgroundTick);
 
             if (checkSidValid()) {
-                hangarManager.tick();
+                HangarManager hangar = hangarManager;
+                if (hangar != null) hangar.tick();
                 tickTasks(Task::onTickTask);
             }
         }
@@ -269,6 +277,21 @@ public class BackpageManager extends Thread implements BackpageAPI, SessionAPI {
 
     public Gson getGson() {
         return GSON;
+    }
+
+    /** Legacy HTTP hangar manager, absent when no browser session is available. */
+    public HangarManager getHangarManager() {
+        return hangarManager;
+    }
+
+    /** Legacy auction manager, absent when no browser session is available. */
+    public AuctionManager getAuctionManager() {
+        return auctionManager;
+    }
+
+    /** Legacy Nova manager, absent when no browser session is available. */
+    public NovaManager getNovaManager() {
+        return novaManager;
     }
 
     @Override
