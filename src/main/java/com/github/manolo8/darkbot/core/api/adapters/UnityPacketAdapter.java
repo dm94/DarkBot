@@ -19,6 +19,7 @@ import eu.darkbot.api.game.other.GameMap;
 import eu.darkbot.api.game.other.Locatable;
 import eu.darkbot.api.extensions.selectors.PetGearSupplier;
 import eu.darkbot.api.managers.AssemblyAPI;
+import eu.darkbot.api.managers.ChatAPI;
 import eu.darkbot.api.managers.AttackAPI;
 import eu.darkbot.api.managers.BoosterAPI;
 import eu.darkbot.api.managers.DispatchAPI;
@@ -603,6 +604,8 @@ public class UnityPacketAdapter extends
             return (T) g.getShipWarp();
         if (api == AssemblyAPI.class)
             return (T) g.getAssembly();
+        if (api == ChatAPI.class)
+            return (T) g.getChat();
         return null;
     }
 

@@ -208,7 +208,10 @@ public class Main extends Thread implements PluginListener, BotAPI {
         API.createWindow();
         if (params.getAutoStart()) setRunning(true);
         this.start();
-        backpage.start();
+        // Unity uses the map socket/packet managers and must not start the legacy
+        // Flash backpage worker. Starting it here would create unnecessary HTTP
+        // traffic and allow Flash-only tasks to compete with Unity state.
+        if (!(API instanceof UnityPacketAdapter)) backpage.start();
     }
 
     @Override
