@@ -20,6 +20,7 @@ public final class SkylabTask implements BackpageModule {
     private volatile String statusMessage = "";
     private volatile String moduleToView;
     private volatile boolean refreshRequested;
+    private volatile boolean initialRequestSent;
     private volatile Runnable stateListener = () -> {};
 
     public SkylabTask(SkylabAPI skylab) {
@@ -74,6 +75,12 @@ public final class SkylabTask implements BackpageModule {
         readyAtMs = 0;
     }
 
+    /** Requests the complete Skylab overview when the panel is opened for the first time. */
+    public void open() {
+        initialRequestSent = true;
+        refreshRequested = true;
+    }
+
     /** Requests the detail view for a module on the next task tick. */
     public void viewModule(String moduleName) {
         if (moduleName == null || moduleName.trim().isEmpty())
@@ -108,10 +115,14 @@ public final class SkylabTask implements BackpageModule {
 
         if (refreshRequested) {
             refreshRequested = false;
-            // The packet API has no separate main-view request in the public contract;
-            // querying a known module is the portable way to refresh its state.
-            String selected = skylab.getSelectedModuleName().orElse(null);
-            if (selected != null && skylab.viewModule(selected)) {
+            // The overview command is requested through the protocol's portable
+            // Skylab module action. If no module is known yet, the request remains
+            // pending until the server has announced one.
+            String selected = skylab.getSelectedModuleName().orElse("");
+            boolean requested = selected.isEmpty()
+                    ? skylab.viewModule("main")
+                    : skylab.viewModule(selected);
+            if (requested) {
                 setState(State.COOLDOWN);
                 statusMessage = "Refreshing " + selected;
                 readyAtMs = System.currentTimeMillis() + RETRY_MS;

@@ -21,7 +21,6 @@ public final class SkylabPanel extends JPanel {
     private final JTable storage = new JTable(storageModel);
     private final JLabel status = new JLabel(" ");
     private final JLabel details = new JLabel(" ");
-    private final JComboBox<String> construction = new JComboBox<>();
     private final JComboBox<String> transportMode = new JComboBox<>(new String[]{"send", "receive"});
     private final JTextField prometium = new JTextField("0");
     private final JTextField endurium = new JTextField("0");
@@ -70,8 +69,6 @@ public final class SkylabPanel extends JPanel {
         JPanel panel = new JPanel(new BorderLayout(4, 4));
         JPanel form = new JPanel(new GridLayout(3, 6, 4, 2));
         form.setBorder(BorderFactory.createTitledBorder("Send resources / transport"));
-        form.add(new JLabel("Creator"));
-        form.add(construction);
         form.add(new JLabel("Mode"));
         form.add(transportMode);
         form.add(new JLabel(""));
@@ -84,7 +81,8 @@ public final class SkylabPanel extends JPanel {
         addField(form, "Duranium", duranium);
         addField(form, "Xenomit", xenomit);
         addField(form, "Seprom", seprom);
-        JButton send = new JButton("Send");
+        JButton send = new JButton("Send resources");
+        send.setToolTipText("Send the selected resources to the selected Skylab module");
         send.addActionListener(e -> sendResources());
         panel.add(form, BorderLayout.CENTER);
         panel.add(send, BorderLayout.EAST);
@@ -99,7 +97,7 @@ public final class SkylabPanel extends JPanel {
     private void sendResources() {
         try {
             SkylabAPI.Action action = new SkylabAPI.Action(
-                    selectedConstruction(), String.valueOf(transportMode.getSelectedItem()), "send",
+                    "", String.valueOf(transportMode.getSelectedItem()), "send",
                     value(prometium), value(endurium), value(terbium), value(prometid),
                     value(promerium), value(duranium), value(xenomit), value(seprom));
             if (skylab.sendAction(action)) {
@@ -111,11 +109,6 @@ public final class SkylabPanel extends JPanel {
         }
     }
 
-    private String selectedConstruction() {
-        Object selected = construction.getSelectedItem();
-        return selected == null ? "" : String.valueOf(selected);
-    }
-
     private static int value(JTextField field) {
         int result = Integer.parseInt(field.getText().trim());
         if (result < 0) throw new IllegalArgumentException("negative resource");
@@ -125,11 +118,9 @@ public final class SkylabPanel extends JPanel {
     /** Refreshes the visible snapshot; callers should invoke it on the EDT. */
     public void refreshView() {
         modulesModel.setRowCount(0);
-        construction.removeAllItems();
         for (SkylabAPI.SkylabModule module : sortedModules()) {
             modulesModel.addRow(new Object[]{module.getType(), module.getLevel() + "/" + module.getMaxLevel(),
                     module.getState(), module.getEfficiency() + "%", module.getCurrentPower() + "/" + module.getMaxPower()});
-            construction.addItem(module.getType());
         }
         storageModel.setRowCount(0);
         for (SkylabAPI.OreStorage ore : skylab.getOreStorages())
@@ -153,6 +144,8 @@ public final class SkylabPanel extends JPanel {
             @Override public boolean isCellEditable(int row, int column) { return false; }
         };
     }
+
+    public SkylabTask getTask() { return task; }
 
     public ListModel<String> getModulesModel() { return new AbstractListModel<String>() {
         @Override public int getSize() { return modulesModel.getRowCount(); }

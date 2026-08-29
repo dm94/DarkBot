@@ -22,6 +22,7 @@ public final class SkylabWindow {
 
     public void show() {
         panel.refreshView();
+        panel.getTask().open();
         frame.setVisible(true);
         frame.toFront();
     }
