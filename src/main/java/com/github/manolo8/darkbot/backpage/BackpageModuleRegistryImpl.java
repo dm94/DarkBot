@@ -32,10 +32,11 @@ public class BackpageModuleRegistryImpl implements BackpageModuleRegistry {
     @Override
     public boolean register(BackpageModule module) {
         Objects.requireNonNull(module, "module");
-        Objects.requireNonNull(module.getId(), "module id");
+        String id = Objects.requireNonNull(module.getId(), "module id").trim();
+        if (id.isEmpty()) throw new IllegalArgumentException("module id must not be empty");
         synchronized (modules) {
-            if (modules.containsKey(module.getId())) return false;
-            modules.put(module.getId(), module);
+            if (modules.containsKey(id)) return false;
+            modules.put(id, module);
             return true;
         }
     }
@@ -57,8 +58,9 @@ public class BackpageModuleRegistryImpl implements BackpageModuleRegistry {
 
     @Override
     public Optional<BackpageModule> getModule(String id) {
+        if (id == null) return Optional.empty();
         synchronized (modules) {
-            return Optional.ofNullable(modules.get(id));
+            return Optional.ofNullable(modules.get(id.trim()));
         }
     }
 
