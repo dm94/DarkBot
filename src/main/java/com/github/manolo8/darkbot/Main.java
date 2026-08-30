@@ -474,12 +474,37 @@ public class Main extends Thread implements PluginListener, BotAPI {
                     return new DummyModule();
                 });
             if (module instanceof FlashDependent && API instanceof UnityPacketAdapter) {
-                String name = moduleId.substring(moduleId.lastIndexOf(".") + 1);
-                Popups.of("Error", I18n.get("bot.issue.module_flash_only", name), JOptionPane.ERROR_MESSAGE).showAsync();
-                module = new DummyModule();
+                module = replaceUnityIncompatibleModule(module);
             }
             setModule(module, true);
         }
+    }
+
+    /**
+     * Replaces legacy Flash-only modules with the API/shared implementations in Unity mode.
+     * The shared modules consume the packet-backed managers through PluginAPI, while the old
+     * classes retain their original behaviour for Flash and old plugins.
+     */
+    private Module replaceUnityIncompatibleModule(Module module) {
+        if (!(API instanceof UnityPacketAdapter)) return module;
+
+        String configuredId = moduleId;
+        if (configuredId.equals(eu.darkbot.shared.modules.LootCollectorModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.LootNCollectorModule)
+            return new eu.darkbot.shared.modules.LootCollectorModule(pluginAPI);
+        if (configuredId.equals(eu.darkbot.shared.modules.LootModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.LootModule)
+            return new eu.darkbot.shared.modules.LootModule(pluginAPI);
+        if (configuredId.equals(eu.darkbot.shared.modules.CollectorModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.CollectorModule)
+            return new eu.darkbot.shared.modules.CollectorModule(pluginAPI);
+        if (configuredId.equals(eu.darkbot.shared.modules.MapModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.MapModule)
+            return new eu.darkbot.shared.modules.MapModule(pluginAPI, false);
+
+        String name = configuredId.substring(configuredId.lastIndexOf(".") + 1);
+        Popups.of("Error", I18n.get("bot.issue.module_flash_only", name), JOptionPane.ERROR_MESSAGE).showAsync();
+        return new DummyModule();
     }
 
     public void setConfig(String config) {
