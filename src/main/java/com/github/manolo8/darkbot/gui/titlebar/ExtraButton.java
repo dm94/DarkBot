@@ -171,6 +171,12 @@ public class ExtraButton extends TitleBarButton<JFrame> {
 
             if (!loginSupported && Main.API instanceof com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter) {
                 list.addAll(new SkylabMenuProvider().getExtraMenuItems(api));
+                com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter adapter =
+                        (com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter) Main.API;
+                if (adapter.getAuctionBackend() != null) {
+                    list.add(create("Auction", e -> new com.github.manolo8.darkbot.backpage.AuctionWindow(
+                            new com.github.manolo8.darkbot.backpage.AuctionModule(adapter.getAuctionBackend(), true)).show()));
+                }
             }
 
             if (loginSupported && gameVisible && OSUtil.isWindows()) {

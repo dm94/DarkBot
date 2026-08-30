@@ -13,8 +13,10 @@ public final class AuctionPanel extends JPanel {
     private final AuctionModule module;
     private final DefaultTableModel auctionModel = model("Item", "Type", "Highest bid", "My bid", "Buy now");
     private final DefaultTableModel bidsModel = model("Item", "Type", "Highest bid", "My bid", "Buy now");
+    private final DefaultTableModel historyModel = model("Item", "Type", "Current bid", "Winner", "Started");
     private final JTable auctionTable = new JTable(auctionModel);
     private final JTable bidsTable = new JTable(bidsModel);
+    private final JTable historyTable = new JTable(historyModel);
     private final JTextField amount = new JTextField("0", 10);
     private final JComboBox<AuctionItems.Type> type = new JComboBox<>(AuctionItems.Type.values());
     private final JLabel status = new JLabel(" ");
@@ -30,7 +32,7 @@ public final class AuctionPanel extends JPanel {
         JButton bid = new JButton("Place bid");
         bid.addActionListener(e -> placeBid(auctionTable));
         JButton quickBuy = new JButton("Buy now");
-        quickBuy.addActionListener(e -> placeBid(auctionTable));
+        quickBuy.addActionListener(e -> buyNow());
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
         controls.add(refresh);
         controls.add(new JLabel("Tab:"));
@@ -44,6 +46,7 @@ public final class AuctionPanel extends JPanel {
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Auctions", new JScrollPane(auctionTable));
         tabs.addTab("My bids", new JScrollPane(bidsTable));
+        tabs.addTab("History", new JScrollPane(historyTable));
         add(controls, BorderLayout.NORTH);
         add(tabs, BorderLayout.CENTER);
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -69,7 +72,17 @@ public final class AuctionPanel extends JPanel {
     public void refreshView() {
         fill(auctionModel, module.getItems());
         fill(bidsModel, module.getItems());
+        historyModel.setRowCount(0);
         status.setText(module.isAvailable() ? module.getStatusMessage() : "Auction unavailable");
+    }
+
+    private void buyNow() {
+        int row = auctionTable.getSelectedRow();
+        if (row < 0) { status.setText("Select an auction"); return; }
+        List<AuctionItemInfo> items = module.getItems((AuctionItems.Type) type.getSelectedItem());
+        if (row >= items.size()) { status.setText("Refresh the list"); return; }
+        AuctionItemInfo item = items.get(row);
+        status.setText("Buy now is not exposed by AuctionModule yet");
     }
 
     private static void fill(DefaultTableModel target, List<AuctionItemInfo> items) {
