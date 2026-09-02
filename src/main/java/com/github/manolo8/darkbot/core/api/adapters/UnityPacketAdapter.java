@@ -151,8 +151,8 @@ public class UnityPacketAdapter extends
      * When the game updates, the map server rejects this value with
      * "Version mismatch: server version=X"; the connector negotiates X automatically
      * and {@link VersionStore} persists it for the next launches.
-     * (2026-09-02 update: previous build hash e160dc30… → efcde548…, confirmed by
-     * the latest Unity client's IL2CPP metadata and live protocol version.)
+     * Keep this fallback aligned with the metadata in the active packet dictionary; a
+     * negotiated server value is persisted automatically when the server announces one.
      */
     public static final String UNITY_CLIENT_VERSION = "efcde5480f2a041b090de0ccf4e805bf";
     /** Properties file where the negotiated handshake hash survives restarts. */
