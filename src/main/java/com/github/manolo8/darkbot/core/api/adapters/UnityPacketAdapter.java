@@ -154,7 +154,7 @@ public class UnityPacketAdapter extends
      * Keep this fallback aligned with the metadata in the active packet dictionary; a
      * negotiated server value is persisted automatically when the server announces one.
      */
-    public static final String UNITY_CLIENT_VERSION = "efcde5480f2a041b090de0ccf4e805bf";
+    public static final String UNITY_CLIENT_VERSION = "4f6257cd716ec8ba99471f12a39d5345";
     /** Properties file where the negotiated handshake hash survives restarts. */
     private static final Path VERSION_FILE = Paths.get("unity-version.properties");
     /** Initial map id (portal jumps re-resolve in a later iteration). */
@@ -662,7 +662,7 @@ public class UnityPacketAdapter extends
                 String rawGameSid = input.gameSid;
 
                 SessionHttpClient http = new SessionHttpClient();
-                http.setUnityMode(true, UNITY_CLIENT_VERSION);
+                http.setUnityMode(true, clientVersion);
                 if (rawGameSid != null && !rawGameSid.isEmpty()) {
                     if (srv == null || srv.isEmpty()) {
                         throw new IOException("gameSid login requires server=<universe>");
