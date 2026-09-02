@@ -151,10 +151,10 @@ public class UnityPacketAdapter extends
      * When the game updates, the map server rejects this value with
      * "Version mismatch: server version=X"; the connector negotiates X automatically
      * and {@link VersionStore} persists it for the next launches.
-     * (2026-08-19 update: previous build hash 0994fb6e… → e160dc30…, observed from
-     * the live server's VersionCommand after the client update.)
+     * (2026-09-02 update: previous build hash e160dc30… → efcde548…, confirmed by
+     * the latest Unity client's IL2CPP metadata and live protocol version.)
      */
-    public static final String UNITY_CLIENT_VERSION = "e160dc30295f509e2405309a9e4d50fb";
+    public static final String UNITY_CLIENT_VERSION = "efcde5480f2a041b090de0ccf4e805bf";
     /** Properties file where the negotiated handshake hash survives restarts. */
     private static final Path VERSION_FILE = Paths.get("unity-version.properties");
     /** Initial map id (portal jumps re-resolve in a later iteration). */
@@ -720,7 +720,7 @@ public class UnityPacketAdapter extends
                     account.userId = input.userId;
                     account.lastMethod = "SID";
                     int mapId = input.mapId > 0 ? input.mapId : MAP_ID;
-                    provider = new SavedSessionProvider(identity, account, UNITY_CLIENT_VERSION, mapId,
+                    provider = new SavedSessionProvider(identity, account, clientVersion, mapId,
                             input.miniClient);
                     method = SessionConnector.LoginMethod.SID;
                 } else if (usr != null && !usr.isEmpty()) {
