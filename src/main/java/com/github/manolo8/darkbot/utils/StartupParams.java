@@ -26,11 +26,17 @@ public class StartupParams implements API.Singleton {
          * Example usage: {@code -login C:\Users\Owner\login.properties}
          */
         LOGIN(AutoLoginProps::new),
-        START, /** Auto-start the bot */
-        NO_OP, /** Run the bot in no-op mode (no-op api) */
-        CONFIG(s -> s), /** Start the bot with a specific config */
-        HIDE, /** If the bot should hide api window on start */
-        NO_WARN; /** Disable warnings about unsupported java version */
+        START,
+        /** Auto-start the bot */
+        NO_OP,
+        /** Run the bot in no-op mode (no-op api) */
+        CONFIG(s -> s),
+        /** Start the bot with a specific config */
+        HIDE,
+        /** If the bot should hide api window on start */
+        NO_WARN;
+
+        /** Disable warnings about unsupported java version */
 
         private final ThrowingFunction<String, ?, Exception> parser;
 
@@ -43,7 +49,8 @@ public class StartupParams implements API.Singleton {
         }
 
         public static LaunchArg of(String str) {
-            while (str.startsWith(COMMAND_PREFIX)) str = str.substring(1);
+            while (str.startsWith(COMMAND_PREFIX))
+                str = str.substring(1);
             try {
                 return LaunchArg.valueOf(str.toUpperCase(Locale.ROOT).replace("-", "_"));
             } catch (IllegalArgumentException e) {
@@ -52,7 +59,8 @@ public class StartupParams implements API.Singleton {
         }
 
         public Object parse(String param) {
-            if (parser == null) return true;
+            if (parser == null)
+                return true;
             try {
                 return parser.apply(param);
             } catch (Exception e) {
@@ -64,7 +72,10 @@ public class StartupParams implements API.Singleton {
     }
 
     public enum PropertyKey {
-        USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, ALLOW_STORE_SID;
+        USERNAME, PASSWORD, MASTER_PASSWORD, SERVER, SID, GAME_SID, USER_ID, INSTANCE,
+        MINI_CLIENT, MAP_ID, TARGET_MAP, CAPTURED_LOGIN_FILE, TRACE_OUTBOUND, DIAGNOSTIC_MOVE,
+        DIAGNOSTIC_MOVE_DISTANCE, DIAGNOSTIC_PORTAL, CAPTURE_S2C, DRIFT_REPORT, ALLOW_STORE_SID;
+
         @Override
         public String toString() {
             return this.name().toLowerCase(Locale.ROOT);
@@ -81,7 +92,8 @@ public class StartupParams implements API.Singleton {
                 System.err.println("Unknown startup argument: " + strArgument + " , ignoring argument.");
                 continue;
             }
-            if (arg.parser != null) i++;
+            if (arg.parser != null)
+                i++;
             if (i >= args.length) {
                 System.err.println("Missing required argument for " + strArgument);
                 break;
@@ -143,6 +155,11 @@ public class StartupParams implements API.Singleton {
             return prop.getProperty(key.toString());
         }
 
+        private String getProperty(PropertyKey key, String camelCaseAlias) {
+            String value = getProperty(key);
+            return value != null ? value : prop.getProperty(camelCaseAlias);
+        }
+
         private void setProperty(PropertyKey key, String val) {
             prop.setProperty(key.toString(), val);
         }
@@ -168,6 +185,87 @@ public class StartupParams implements API.Singleton {
             return getProperty(PropertyKey.SID);
         }
 
+        /** Raw map-server SID captured from the Unity client's LoginRequest. */
+        public String getGameSID() {
+            return getProperty(PropertyKey.GAME_SID, "gameSid");
+        }
+
+        /** Player id captured from the Unity client's LoginRequest. */
+        public String getUserId() {
+            return getProperty(PropertyKey.USER_ID, "userId");
+        }
+
+        /** Gameserver instance/pid captured from the Unity client's LoginRequest. */
+        public String getInstance() {
+            return getProperty(PropertyKey.INSTANCE, "instance");
+        }
+
+        /**
+         * Whether the LoginRequest should identify this connection as a mini client.
+         */
+        public String getMiniClient() {
+            return getProperty(PropertyKey.MINI_CLIENT, "miniClient");
+        }
+
+        /** Initial map id to resolve in maps.php. */
+        public String getMapId() {
+            return getProperty(PropertyKey.MAP_ID, "mapId");
+        }
+
+        /**
+         * Destination map (numeric id or catalog name such as {@code 3-6}) for portal
+         * travel. When set, the packet travel loop routes through
+         * {@code StarSystemAPI#findNext} instead of jumping the nearest gate.
+         */
+        public String getTargetMap() {
+            return getProperty(PropertyKey.TARGET_MAP, "targetMap");
+        }
+
+        /** Optional path to a harness captured-login.properties file. */
+        public String getCapturedLoginFile() {
+            return getProperty(PropertyKey.CAPTURED_LOGIN_FILE, "capturedLoginFile");
+        }
+
+        /** Enables logging of outbound packet names for a diagnostic run. */
+        public String getTraceOutbound() {
+            return getProperty(PropertyKey.TRACE_OUTBOUND, "traceOutbound");
+        }
+
+        /** Enables one controlled movement after the session reaches READY. */
+        public String getDiagnosticMove() {
+            return getProperty(PropertyKey.DIAGNOSTIC_MOVE, "diagnosticMove");
+        }
+
+        /** Distance in map units for the one-shot diagnostic movement. */
+        public String getDiagnosticMoveDistance() {
+            return getProperty(PropertyKey.DIAGNOSTIC_MOVE_DISTANCE, "diagnosticMoveDistance");
+        }
+
+        /**
+         * Enables a one-shot diagnostic travel to the nearest portal and jump attempt.
+         */
+        public String getDiagnosticPortal() {
+            return getProperty(PropertyKey.DIAGNOSTIC_PORTAL, "diagnosticPortal");
+        }
+
+        /**
+         * Optional path for a raw server→client frame dump (3-byte framed fixture
+         * format),
+         * used to regenerate the packet dictionary with
+         * {@code unity-harness:detectDefs}.
+         */
+        public String getCaptureS2C() {
+            return getProperty(PropertyKey.CAPTURE_S2C, "captureS2C");
+        }
+
+        /**
+         * Optional path for the protocol-drift report (drift-report.json): unknown
+         * packet/module ids, decode failures and dispatch errors observed in the session.
+         */
+        public String getDriftReport() {
+            return getProperty(PropertyKey.DRIFT_REPORT, "driftReport");
+        }
+
         public boolean isAllowStoreSID() {
             return Boolean.parseBoolean(getProperty(PropertyKey.ALLOW_STORE_SID));
         }
@@ -185,7 +283,8 @@ public class StartupParams implements API.Singleton {
         }
 
         public void updateLoginFile() {
-            try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(path), StandardCharsets.UTF_8)) {
+            try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(path),
+                    StandardCharsets.UTF_8)) {
                 prop.store(writer, null);
             } catch (IOException e) {
                 e.printStackTrace();

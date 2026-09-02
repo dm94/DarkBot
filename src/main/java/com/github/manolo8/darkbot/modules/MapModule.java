@@ -1,6 +1,7 @@
 package com.github.manolo8.darkbot.modules;
 
 import com.github.manolo8.darkbot.Main;
+import com.github.manolo8.darkbot.core.itf.FlashDependent;
 import com.github.manolo8.darkbot.core.objects.Map;
 import com.github.manolo8.darkbot.modules.utils.MapTraveler;
 import com.github.manolo8.darkbot.utils.I18n;
@@ -10,7 +11,7 @@ import com.github.manolo8.darkbot.utils.I18n;
  */
 @Deprecated(forRemoval = true)
 @SuppressWarnings("removal")
-public class MapModule extends TemporalModule {
+public class MapModule extends TemporalModule implements FlashDependent {
 
     private MapTraveler traveler;
 

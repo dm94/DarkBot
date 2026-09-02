@@ -1,6 +1,8 @@
 package com.github.manolo8.darkbot;
 
+import com.github.manolo8.darkbot.backpage.AuctionModule;
 import com.github.manolo8.darkbot.backpage.BackpageManager;
+import com.github.manolo8.darkbot.backpage.SkylabTask;
 import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.ConfigHandler;
 import com.github.manolo8.darkbot.config.ConfigManager;
@@ -12,6 +14,8 @@ import com.github.manolo8.darkbot.core.BotInstaller;
 import com.github.manolo8.darkbot.core.IDarkBotAPI;
 import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.api.InvalidNativeSignature;
+import com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter;
+import com.github.manolo8.darkbot.core.itf.FlashDependent;
 import com.github.manolo8.darkbot.core.manager.EffectManager;
 import com.github.manolo8.darkbot.core.manager.FacadeManager;
 import com.github.manolo8.darkbot.core.manager.GuiManager;
@@ -49,6 +53,7 @@ import eu.darkbot.api.extensions.Configurable;
 import eu.darkbot.api.extensions.Installable;
 import eu.darkbot.api.extensions.Module;
 import eu.darkbot.api.extensions.TemporalModule;
+import eu.darkbot.api.extensions.backpage.BackpageModuleRegistry;
 import eu.darkbot.api.game.other.Lockable;
 import eu.darkbot.api.managers.BotAPI;
 import eu.darkbot.api.managers.EventBrokerAPI;
@@ -158,14 +163,23 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.pluginHandler   = pluginAPI.requireInstance(PluginHandler.class);
         this.pluginUpdater   = pluginAPI.requireInstance(PluginUpdater.class);
         this.backpage        = pluginAPI.requireInstance(BackpageManager.class);
+        // The selected API is created only after the core services have been initialized.
+        // Functional tasks requiring that API are registered immediately afterwards.
+        eu.darkbot.api.extensions.backpage.BackpageModuleRegistry functionalTasks;
         this.featureRegistry = pluginAPI.requireInstance(FeatureRegistry.class);
         this.repairManager   = pluginAPI.requireInstance(RepairManager.class);
         this.botInstaller = pluginAPI.requireInstance(BotInstaller.class);
         this.eventBroker = pluginAPI.requireAPI(EventBrokerAPI.class);
 
         API = configManager.getAPI(pluginAPI);
-        API.setSize(config.BOT_SETTINGS.API_CONFIG.width, config.BOT_SETTINGS.API_CONFIG.height);
+        // Publish the selected adapter before resolving any adapter-specific APIs.
+        // UnityPacketAdapter registers SkylabAPI and the other packet managers while
+        // it is constructed; requireAPI must therefore happen after this assignment.
+        if (API.hasCapability(Capability.SHOW_GAME))
+            API.setSize(config.BOT_SETTINGS.API_CONFIG.width, config.BOT_SETTINGS.API_CONFIG.height);
         pluginAPI.addInstance(API);
+        functionalTasks = pluginAPI.requireAPI(BackpageModuleRegistry.class);
+        registerFunctionalTasks(functionalTasks);
 
         this.performanceManager = pluginAPI.requireInstance(PerformanceManager.class);
 
@@ -182,6 +196,9 @@ public class Main extends Thread implements PluginListener, BotAPI {
         this.pluginHandler.updatePluginsSync();
         this.pluginHandler.addListener(this);
 
+        // Build the UI only after the selected adapter and its packet managers have
+        // been published. Unity menu providers must never resolve SkylabAPI through
+        // the generic implementation scanner during early construction.
         this.form = new MainGui(this);
         this.pluginUpdater.scheduleUpdateChecker();
 
@@ -191,7 +208,10 @@ public class Main extends Thread implements PluginListener, BotAPI {
         API.createWindow();
         if (params.getAutoStart()) setRunning(true);
         this.start();
-        backpage.start();
+        // Unity uses the map socket/packet managers and must not start the legacy
+        // Flash backpage worker. Starting it here would create unnecessary HTTP
+        // traffic and allow Flash-only tasks to compete with Unity state.
+        if (!(API instanceof UnityPacketAdapter)) backpage.start();
     }
 
     @Override
@@ -220,6 +240,20 @@ public class Main extends Thread implements PluginListener, BotAPI {
             } catch (Throwable e) {
                 e.printStackTrace();
             }
+        }
+    }
+
+    private void registerFunctionalTasks(eu.darkbot.api.extensions.backpage.BackpageModuleRegistry registry) {
+        if (API.hasCapability(Capability.LOGIN)) {
+            registry.register(pluginAPI.requireInstance(AuctionModule.class));
+        } else if (API instanceof UnityPacketAdapter) {
+            UnityPacketAdapter unity = (UnityPacketAdapter) API;
+            eu.darkbot.api.managers.SkylabAPI skylab = unity.getSkylabManager();
+            if (skylab != null) registry.register(new SkylabTask(skylab));
+            // AuctionModule is transport-neutral; Unity supplies a packet backend and
+            // never constructs the legacy HTTP manager in this branch.
+            if (unity.getAuctionBackend() != null)
+                registry.register(new AuctionModule(unity.getAuctionBackend(), true));
         }
     }
 
@@ -262,6 +296,11 @@ public class Main extends Thread implements PluginListener, BotAPI {
     }
 
     private void validTick() {
+        if (API instanceof UnityPacketAdapter) {
+            validUnityTick((UnityPacketAdapter) API);
+            return;
+        }
+
         settingsManager.tick();
         hero.tick();
         mapManager.tick();
@@ -281,6 +320,20 @@ public class Main extends Thread implements PluginListener, BotAPI {
             hero.setLocalTarget(hero.getTargetAs(Lockable.class));
 
         pingManager.tick();
+    }
+
+    /**
+     * Packet sessions already update their managers from decoded frames. Ticking the native
+     * memory managers here would read the NoOp memory (and make the native GUI gate report
+     * "not loaded"), so the normal module loop must be driven by the packet adapter itself.
+     * statsManager.tick() is still called: with the unity pipeline up it mirrors the
+     * packet-backed stats into the core stats instead of reading memory.
+     */
+    private void validUnityTick(UnityPacketAdapter unity) {
+        API.tick();
+        statsManager.tick();
+        tickingModule = running && unity.canTickModule();
+        tickLogic(tickingModule);
     }
 
     private void tickRunning() {
@@ -420,8 +473,38 @@ public class Main extends Thread implements PluginListener, BotAPI {
                     Popups.of("Error", I18n.get("bot.issue.module_load_failed", name), JOptionPane.ERROR_MESSAGE).showAsync();
                     return new DummyModule();
                 });
+            if (module instanceof FlashDependent && API instanceof UnityPacketAdapter) {
+                module = replaceUnityIncompatibleModule(module);
+            }
             setModule(module, true);
         }
+    }
+
+    /**
+     * Replaces legacy Flash-only modules with the API/shared implementations in Unity mode.
+     * The shared modules consume the packet-backed managers through PluginAPI, while the old
+     * classes retain their original behaviour for Flash and old plugins.
+     */
+    private Module replaceUnityIncompatibleModule(Module module) {
+        if (!(API instanceof UnityPacketAdapter)) return module;
+
+        String configuredId = moduleId;
+        if (configuredId.equals(eu.darkbot.shared.modules.LootCollectorModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.LootNCollectorModule)
+            return new eu.darkbot.shared.modules.LootCollectorModule(pluginAPI);
+        if (configuredId.equals(eu.darkbot.shared.modules.LootModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.LootModule)
+            return new eu.darkbot.shared.modules.LootModule(pluginAPI);
+        if (configuredId.equals(eu.darkbot.shared.modules.CollectorModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.CollectorModule)
+            return new eu.darkbot.shared.modules.CollectorModule(pluginAPI);
+        if (configuredId.equals(eu.darkbot.shared.modules.MapModule.class.getCanonicalName())
+                || module instanceof com.github.manolo8.darkbot.modules.MapModule)
+            return new eu.darkbot.shared.modules.MapModule(pluginAPI, false);
+
+        String name = configuredId.substring(configuredId.lastIndexOf(".") + 1);
+        Popups.of("Error", I18n.get("bot.issue.module_flash_only", name), JOptionPane.ERROR_MESSAGE).showAsync();
+        return new DummyModule();
     }
 
     public void setConfig(String config) {

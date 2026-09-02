@@ -157,6 +157,12 @@ public class SavedLogins extends JPanel implements LoginScreen {
 
     @Override
     public LoginForm.Message tryLogin(LoginData login, Consumer<LoginForm.Message> publish) {
+        return tryLogin(login, publish, false);
+    }
+
+    @Override
+    public LoginForm.Message tryLogin(LoginData login, Consumer<LoginForm.Message> publish,
+                                      boolean packetMode) {
         Credentials.User user = users.getSelectedValue();
         if (user == null) return new LoginForm.Message(true,
                 I18n.get("gui.login.error.no_user"), I18n.get("gui.login.error.no_user.desc"));
@@ -172,6 +178,11 @@ public class SavedLogins extends JPanel implements LoginScreen {
         });
 
         if (!Strings.isEmpty(user.s) && !Strings.isEmpty(user.sv)) {
+            if (packetMode) {
+                login.setSid(user.s, user.sv);
+                return null;
+            }
+
             publish.accept(new LoginForm.Message(false, "Trying to login via saved SID", null));
             try {
                 login.setSid(user.s, user.sv);
@@ -183,7 +194,7 @@ public class SavedLogins extends JPanel implements LoginScreen {
             publish.accept(new LoginForm.Message(false, I18n.get("gui.login.info.logging_in"), null));
         }
 
-        LoginUtils.usernameLogin(login);
+        if (!packetMode) LoginUtils.usernameLogin(login);
         return null;
     }
 

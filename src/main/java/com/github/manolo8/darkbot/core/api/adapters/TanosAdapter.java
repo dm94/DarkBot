@@ -32,6 +32,7 @@ public class TanosAdapter extends GameAPIImpl<
         super(params, tanos, tanos, tanos, new ByteUtils.ExtraMemoryReader(tanos, botInstaller), tanos, di,
                 Capability.LOGIN,
                 Capability.INITIALLY_SHOWN,
+                Capability.SHOW_GAME,
                 Capability.CREATE_WINDOW_THREAD,
                 Capability.DIRECT_ENTITY_SELECT,
                 Capability.DIRECT_MOVE_SHIP,

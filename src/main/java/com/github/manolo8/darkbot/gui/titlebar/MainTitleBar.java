@@ -1,6 +1,7 @@
 package com.github.manolo8.darkbot.gui.titlebar;
 
 import com.github.manolo8.darkbot.Main;
+import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.gui.MainGui;
 import com.github.manolo8.darkbot.gui.utils.SimpleMouseListener;
 import com.github.manolo8.darkbot.gui.utils.UIUtils;
@@ -20,13 +21,17 @@ public class MainTitleBar extends JMenuBar implements SimpleMouseListener {
         add(new ConfigButton(frame));
         add(new StatsButton(main, frame));
         add(new StartButton(main, frame));
-        add(new BackpageButton(main, frame));
+        if (Main.API.hasCapability(Capability.LOGIN)
+                && !Main.API.hasCapability(Capability.BACKGROUND_ONLY))
+            add(new BackpageButton(main, frame));
+
 
         add(titleFiller);
         add(DiagnosticBar.create(main, frame));
 
         add(new HookButton(frame));
-        add(new VisibilityButton(main, frame));
+        if (Main.API.hasCapability(Capability.SHOW_GAME))
+            add(new VisibilityButton(main, frame));
         add(new PinButton(frame));
         add(new TrayButton(main, frame));
     }

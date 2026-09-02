@@ -2,8 +2,10 @@ package com.github.manolo8.darkbot.gui.titlebar;
 
 import com.github.manolo8.darkbot.Main;
 import com.github.manolo8.darkbot.config.ColorScheme;
+import com.github.manolo8.darkbot.backpage.SkylabMenuProvider;
 import com.github.manolo8.darkbot.config.Config;
 import com.github.manolo8.darkbot.config.ConfigEntity;
+import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.utils.Lazy;
 import com.github.manolo8.darkbot.extensions.features.Feature;
 import com.github.manolo8.darkbot.extensions.features.FeatureRegistry;
@@ -92,9 +94,18 @@ public class ExtraButton extends TitleBarButton<JFrame> {
 
     private void rebuild(Main main) {
         if (!empty) return;
-        for (ExtraMenus extraDecoration : EXTRA_DECORATIONS) {
-            for (JComponent component : extraDecoration.getExtraMenuItems(main.pluginAPI)) {
-                extraOptions.add(component);
+        // The default provider is always present, even if feature loading was
+        // interrupted by an optional unsigned plugin. Otherwise the menu can contain
+        // only stale development entries such as Object inspector.
+        List<ExtraMenus> providers = new ArrayList<>(EXTRA_DECORATIONS);
+        if (providers.stream().noneMatch(DefaultExtraMenuProvider.class::isInstance))
+            providers.add(new DefaultExtraMenuProvider());
+        for (ExtraMenus extraDecoration : providers) {
+            try {
+                for (JComponent component : extraDecoration.getExtraMenuItems(main.pluginAPI))
+                    extraOptions.add(component);
+            } catch (RuntimeException error) {
+                error.printStackTrace();
             }
         }
         empty = false;
@@ -114,31 +125,39 @@ public class ExtraButton extends TitleBarButton<JFrame> {
             List<JComponent> list = new ArrayList<>();
 
             I18nAPI i18n = api.requireAPI(I18nAPI.class);
-            BackpageAPI backpage = api.requireAPI(BackpageAPI.class);
             ConfigAPI config = api.requireAPI(ConfigAPI.class);
             Main main = api.requireInstance(Main.class);
 
             String p = "gui.hamburger_button.";
 
-            list.add(create(i18n.get(p + "home"), e -> {
-                String sid = backpage.getSid(), instance = backpage.getInstanceURI().toString();
-                if (sid == null || sid.isEmpty() || instance == null || instance.isEmpty()) return;
-                String url = instance + "?dosid=" + sid;
-                if ((e.getModifiers() & InputEvent.BUTTON3_MASK) != 0) SystemUtils.toClipboard(url);
-                else SystemUtils.openUrl(url);
-            }));
-            list.add(create(i18n.get(p + "reload"), e -> main.addTask(() -> {
-                System.out.println("Triggering refresh: user requested");
-                try {
-                    Main.API.handleRefresh();
-                } catch (Exception ex) {
-                    System.out.println("Exception handling user requested refresh:");
-                    ex.printStackTrace();
-                }
-            })));
+            boolean loginSupported = Main.API.hasCapability(Capability.LOGIN);
+            boolean gameVisible = Main.API.hasCapability(Capability.SHOW_GAME);
+
+            if (loginSupported) {
+                BackpageAPI backpage = api.requireAPI(BackpageAPI.class);
+                list.add(create(i18n.get(p + "home"), e -> {
+                    String sid = backpage.getSid(), instance = backpage.getInstanceURI().toString();
+                    if (sid == null || sid.isEmpty() || instance == null || instance.isEmpty()) return;
+                    String url = instance + "?dosid=" + sid;
+                    if ((e.getModifiers() & InputEvent.BUTTON3_MASK) != 0) SystemUtils.toClipboard(url);
+                    else SystemUtils.openUrl(url);
+                }));
+                list.add(create(i18n.get(p + "reload"), e -> main.addTask(() -> {
+                    System.out.println("Triggering refresh: user requested");
+                    try {
+                        Main.API.handleRefresh();
+                    } catch (Exception ex) {
+                        System.out.println("Exception handling user requested refresh:");
+                        ex.printStackTrace();
+                    }
+                })));
+            }
             list.add(create(i18n.get(p + "discord"), UIUtils.getIcon("discord"),
                     e -> SystemUtils.openUrl("https://discord.gg/KFd8vZT")));
-            list.add(create(i18n.get(p + "copy_sid"), e -> SystemUtils.toClipboard(backpage.getSid())));
+            if (loginSupported) {
+                BackpageAPI backpage = api.requireAPI(BackpageAPI.class);
+                list.add(create(i18n.get(p + "copy_sid"), e -> SystemUtils.toClipboard(backpage.getSid())));
+            }
             list.add(create(i18n.get(p + "reset_colorscheme"), e -> {
                 ConfigSetting<ColorScheme> cs = config.getConfig("bot_settings.map_display.cs");
                 if (cs == null) return;
@@ -150,7 +169,17 @@ public class ExtraButton extends TitleBarButton<JFrame> {
                 main.repairManager.resetDeaths();
             }));
 
-            if (OSUtil.isWindows()) {
+            if (!loginSupported && Main.API instanceof com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter) {
+                list.addAll(new SkylabMenuProvider().getExtraMenuItems(api));
+                com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter adapter =
+                        (com.github.manolo8.darkbot.core.api.adapters.UnityPacketAdapter) Main.API;
+                if (adapter.getAuctionBackend() != null) {
+                    list.add(create("Auction", e -> new com.github.manolo8.darkbot.backpage.AuctionWindow(
+                            new com.github.manolo8.darkbot.backpage.AuctionModule(adapter.getAuctionBackend(), true)).show()));
+                }
+            }
+
+            if (loginSupported && gameVisible && OSUtil.isWindows()) {
                 list.add(create("Open Hangar", e -> {
                     JComponent component = (JComponent) e.getSource();
                     component.setEnabled(false);

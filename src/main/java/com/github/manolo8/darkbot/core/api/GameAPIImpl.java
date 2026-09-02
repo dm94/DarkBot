@@ -260,7 +260,7 @@ public class GameAPIImpl<
             becomeValidTimer.disarm();
         }
 
-        if (!autoHidden && isValid && params.getAutoHide()) {
+        if (hasCapability(Capability.SHOW_GAME) && !autoHidden && isValid && params.getAutoHide()) {
             setVisible(false, Main.INSTANCE.config.BOT_SETTINGS.API_CONFIG.FULLY_HIDE_API);
             autoHidden = true;
         }

@@ -35,8 +35,14 @@ public class UserLogin extends JPanel implements LoginScreen {
 
     @Override
     public LoginForm.Message tryLogin(LoginData login, Consumer<LoginForm.Message> publish) {
+        return tryLogin(login, publish, false);
+    }
+
+    @Override
+    public LoginForm.Message tryLogin(LoginData login, Consumer<LoginForm.Message> publish,
+                                      boolean packetMode) {
         login.setCredentials(username.getText(), password.getText(), null);
-        LoginUtils.usernameLogin(login);
+        if (!packetMode) LoginUtils.usernameLogin(login);
         return null;
     }
 

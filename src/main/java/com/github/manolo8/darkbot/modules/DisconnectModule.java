@@ -1,11 +1,14 @@
 package com.github.manolo8.darkbot.modules;
 
 import com.github.manolo8.darkbot.Main;
+import com.github.manolo8.darkbot.core.api.Capability;
 import com.github.manolo8.darkbot.core.manager.HeroManager;
 import com.github.manolo8.darkbot.core.objects.Gui;
 import com.github.manolo8.darkbot.modules.utils.SafetyFinder;
 import com.github.manolo8.darkbot.utils.I18n;
 import com.github.manolo8.darkbot.utils.Time;
+import eu.darkbot.api.managers.PetAPI;
+import eu.darkbot.api.managers.SessionAPI;
 
 @SuppressWarnings("removal")
 public class DisconnectModule extends TemporalModule {
@@ -16,6 +19,9 @@ public class DisconnectModule extends TemporalModule {
     private Main main;
     private HeroManager hero;
     private SafetyFinder safety;
+    private PetAPI pet;
+    private SessionAPI session;
+    private boolean flashLogin;
 
     private Gui lostConnection;
     private Gui logout;
@@ -23,6 +29,7 @@ public class DisconnectModule extends TemporalModule {
 
     private Long pauseUntil = null;
     private boolean refreshing = false;
+    private boolean disconnected = false;
 
     /**
      * @param pauseTime null for infinite pause, otherwise pause for that amount of MS.
@@ -38,6 +45,9 @@ public class DisconnectModule extends TemporalModule {
         this.main = main;
         this.hero = main.hero;
         this.safety = new SafetyFinder(main);
+        this.pet = main.pluginAPI.requireAPI(PetAPI.class);
+        this.flashLogin = Main.API.hasCapability(Capability.LOGIN);
+        if (!flashLogin) this.session = main.pluginAPI.requireAPI(SessionAPI.class);
 
         this.lostConnection = main.guiManager.lostConnection;
         this.logout = main.guiManager.logout;
@@ -60,24 +70,29 @@ public class DisconnectModule extends TemporalModule {
             tickStopped();
             return;
         }
-        main.guiManager.pet.setEnabled(false);
+        pet.setEnabled(false);
         safety.setRefreshing(true);
         safety.tick();
         if (hero.locationInfo.isMoving() || safety.state() != SafetyFinder.Escaping.WAITING) return;
-        if (!logout.visible) logoutStart = System.currentTimeMillis();
-        logout.show(true);
-        // Prevent bug where logout gets to 0 and doesn't log out, just force a reload
-        if (System.currentTimeMillis() - logoutStart > 25_000) {
-            logoutStart = System.currentTimeMillis() + 90_000;
-            System.out.println("Disconnect module, refreshing due to logout not finishing bug.");
-            Main.API.handleRefresh();
+        if (flashLogin) {
+            if (!logout.visible) logoutStart = System.currentTimeMillis();
+            logout.show(true);
+            // Prevent bug where logout gets to 0 and doesn't log out, just force a reload
+            if (System.currentTimeMillis() - logoutStart > 25_000) {
+                logoutStart = System.currentTimeMillis() + 90_000;
+                System.out.println("Disconnect module, refreshing due to logout not finishing bug.");
+                Main.API.handleRefresh();
+            }
+        } else if (!disconnected) {
+            session.disconnect();
+            disconnected = true;
         }
     }
 
     @Override
     public void tickStopped() {
         if (main.isRunning()) {
-            if (!lostConnection.visible) return;
+            if (flashLogin ? !lostConnection.visible : !disconnected) return;
             // Bot done. Pause "forever" (unless a behaviour restarts it).
             if (pauseTime == null) main.setRunning(false);
             else if (pauseTime == 0) goBack();

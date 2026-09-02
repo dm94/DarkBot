@@ -40,6 +40,19 @@ public class Portal extends Entity implements eu.darkbot.api.game.entities.Porta
         return matcher.matches(x, y, type);
     }
 
+    /** Static graph matcher fields used to seed the packet adapter's dynamic portal routes. */
+    public int getSearchType() {
+        return matcher.searchType;
+    }
+
+    public int getSearchX() {
+        return matcher.searchX;
+    }
+
+    public int getSearchY() {
+        return matcher.searchY;
+    }
+
     @Override
     public void update() {
         super.update();

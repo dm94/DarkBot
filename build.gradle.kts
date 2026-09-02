@@ -50,9 +50,12 @@ dependencies {
     val flatLafVersion = "3.4"
 
     // use this if you want to use local(mavenLocal) darkbot API
-    val useLocalMaven = false
-    if (useLocalMaven) api("eu.darkbot", "darkbot-impl", apiVersion)
-    else api("eu.darkbot.DarkBotAPI", "darkbot-impl", apiVersion)
+    val useLocalMaven = true
+    if (useLocalMaven) {
+        api("eu.darkbot", "darkbot-impl", apiVersion)
+        // darkbot-api publishes a dependency-less POM, so it is declared explicitly (AGENTS.md gotcha)
+        api("eu.darkbot", "darkbot-api", apiVersion)
+    } else api("eu.darkbot.DarkBotAPI", "darkbot-impl", apiVersion)
 
     // have to keep version 2.8.9, in newer versions GSON calls `toString` of config enums upon creation
     api("com.google.code.gson", "gson", "2.8.9")
@@ -61,6 +64,13 @@ dependencies {
     api("com.formdev", "flatlaf-extras", flatLafVersion)
     api("org.jgrapht", "jgrapht-core", "1.5.2")
     api("it.unimi.dsi", "fastutil-core", "8.5.13")
+
+    // Unity modules (Fase 4, Camino A): unity-game state managers + unity-transport codec/relay.
+    // unity-game's POM carries unity-transport/darkbot-util transitively, but declare them explicitly
+    // because darkbot-api publishes a dependency-less POM (see AGENTS.md gotcha).
+    implementation("eu.darkbot", "unity-game", "0.1.12")
+    implementation("eu.darkbot", "unity-transport", "0.1.15")
+    implementation("eu.darkbot", "darkbot-util", "0.9.9")
 
     // Testing stat time-series requires this
     //api("org.knowm.xchart", "xchart", "3.8.5")
@@ -72,7 +82,32 @@ dependencies {
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
-tasks.withType<JavaExec> { systemProperty("file.encoding", "UTF-8") }
+tasks.withType<JavaExec> {
+    systemProperty("file.encoding", "UTF-8")
+    // Keep the runnable bot aligned with the sibling source modules during Unity
+    // development. This avoids silently executing a stale mavenLocal unity-game jar.
+    // Dependency substitution already builds the included project when needed;
+    // do not resolve an included-build handle here (Gradle rejects that during
+    // task configuration for this standalone project).
+}
+
+// JUnit 5 (jupiter) is the declared test framework; without this the Gradle test task
+// defaults to JUnit 4 and silently runs zero tests (AGENTS.md documents `gradle test`).
+tasks.test {
+    useJUnitPlatform()
+}
+
+// All eu.darkbot dependencies now resolve from mavenLocal (darkbot-impl/api/util via the
+// explicit coordinates above, unity-game/unity-transport via their own POMs). darkbot-util
+// and darkbot-api end up on the classpath twice (direct + transitively through darkbot-impl
+// and unity-game), with identical 0.9.9 content — dedupe the distributions like the fat jar
+// already does (EXCLUDE).
+tasks.withType<AbstractArchiveTask> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+tasks.withType<Sync> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
 tasks.wrapper {
     gradleVersion = "8.6"
@@ -88,7 +123,10 @@ tasks.jar {
     }
 
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(configurations.runtimeClasspath.get().map(::zipTree))
+    // Resolve lazily at execution time: eager resolution during configuration breaks
+    // composite builds (-PunityComposite), because substituting included-build projects
+    // before they are fully configured is illegal in Gradle.
+    from(provider { configurations.runtimeClasspath.get().map(::zipTree) })
 }
 
 tasks.register<proguard.gradle.ProGuardTask>("proguard") {

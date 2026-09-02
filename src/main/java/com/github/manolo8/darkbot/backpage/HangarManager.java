@@ -1,9 +1,5 @@
 package com.github.manolo8.darkbot.backpage;
 
-import com.github.manolo8.darkbot.backpage.entities.Drone;
-import com.github.manolo8.darkbot.backpage.entities.Item;
-import com.github.manolo8.darkbot.backpage.entities.ItemInfo;
-import com.github.manolo8.darkbot.backpage.entities.ShipInfo;
 import com.github.manolo8.darkbot.backpage.hangar.Hangar;
 import com.github.manolo8.darkbot.backpage.hangar.HangarResponse;
 import com.github.manolo8.darkbot.core.itf.Tickable;
@@ -15,13 +11,9 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.List;
 
 public class HangarManager implements Tickable {
     private final Gson gson;
-
-    @Deprecated
-    private final LegacyHangarManager legacyHangarManager;
     private final BackpageManager backpage;
 
     private HangarResponse hangarList;
@@ -30,11 +22,9 @@ public class HangarManager implements Tickable {
     private volatile long updateHangarListEvery = -1, updateCurrentHangarEvery = -1;
     private long lastHangarListUpdate, lastCurrentHangarUpdate;
 
-
     public HangarManager(BackpageManager backpage) {
         this.backpage = backpage;
         this.gson = backpage.getGson();
-        this.legacyHangarManager = backpage.legacyHangarManager;
     }
 
     @Override
@@ -75,7 +65,7 @@ public class HangarManager implements Tickable {
 
     /**
      * @return The ID of the current hangar. A value of 0 indicates that the
-     *         currentHangar has not been initialized.
+     * currentHangar has not been initialized.
      */
     public int getCurrentHangarId() {
         if (getHangarList() != null && getHangarList().getData() != null && getHangarList().getData().getRet() != null
@@ -156,66 +146,5 @@ public class HangarManager implements Tickable {
         }
 
         return hangar;
-    }
-
-    @Deprecated
-    public boolean changeHangar(int hangarId) {
-        return changeHangar(String.valueOf(hangarId));
-    }
-
-    /* For backwards compatibility, keep methods from legacy hangar manager */
-    @Deprecated
-    public boolean changeHangar(String hangarId) {
-        return legacyHangarManager.changeHangar(hangarId);
-    }
-
-    @Deprecated
-    public Boolean checkDrones() {
-        return legacyHangarManager.checkDrones();
-    }
-
-    @Deprecated
-    public void updateHangars() {
-        legacyHangarManager.updateHangars();
-    }
-
-    @Deprecated
-    public String getActiveHangar() {
-        return legacyHangarManager.getActiveHangar();
-    }
-
-    @Deprecated
-    public void updateHangarData(int expiryTime) {
-        legacyHangarManager.updateHangarData(expiryTime);
-    }
-
-    @Deprecated
-    public List<Drone> getDrones() {
-        return legacyHangarManager.getDrones();
-    }
-
-    @Deprecated
-    public List<Item> getItems() {
-        return legacyHangarManager.getItems();
-    }
-
-    @Deprecated
-    public List<ItemInfo> getItemInfos() {
-        return legacyHangarManager.getItemInfos();
-    }
-
-    @Deprecated
-    public List<ShipInfo> getShipInfos() {
-        return legacyHangarManager.getShipInfos();
-    }
-
-    @Deprecated
-    public List<String> getTypes() {
-        return legacyHangarManager.getTypes();
-    }
-
-    @Deprecated
-    public List<String> getLootIds() {
-        return legacyHangarManager.getLootIds();
     }
 }

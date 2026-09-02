@@ -33,7 +33,16 @@ public class LoginUtils {
     private static final Pattern DATA_PATTERN = Pattern.compile("\"src\": \"([^\"]*)\".*}, (\\{.*})");
 
     public static LoginData performUserLogin(StartupParams params) {
-        if (params.getAutoLogin()) {
+        return performUserLogin(params, false);
+    }
+
+    /**
+     * Shows the standard login form and optionally leaves authentication to a packet adapter.
+     * The packet mode deliberately keeps the same Flash-era tabs and saved-login UX; it only
+     * changes where the credentials are consumed after the form closes.
+     */
+    public static LoginData performUserLogin(StartupParams params, boolean packetMode) {
+        if (params.getAutoLogin() && !packetMode) {
             try {
                 return performAutoLogin(params.getAutoLoginProps());
             } catch (LoginException e) {
@@ -42,7 +51,7 @@ public class LoginUtils {
             }
         }
 
-        LoginForm panel = new LoginForm();
+        LoginForm panel = new LoginForm(packetMode);
 
         Popups.of("Login", panel)
                 .options()
@@ -52,6 +61,7 @@ public class LoginUtils {
 
         LoginData loginData = panel.getResult();
         if (loginData.isNotInitialized()) {
+            if (packetMode) return panel.isSubmitted() ? loginData : null;
             System.out.println("Closed login panel, exited without logging in");
             System.exit(0);
         }
