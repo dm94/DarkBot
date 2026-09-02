@@ -69,7 +69,7 @@ dependencies {
     // unity-game's POM carries unity-transport/darkbot-util transitively, but declare them explicitly
     // because darkbot-api publishes a dependency-less POM (see AGENTS.md gotcha).
     implementation("eu.darkbot", "unity-game", "0.1.12")
-    implementation("eu.darkbot", "unity-transport", "0.1.12")
+    implementation("eu.darkbot", "unity-transport", "0.1.15")
     implementation("eu.darkbot", "darkbot-util", "0.9.9")
 
     // Testing stat time-series requires this
